@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Grok Portfolio Replicator</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header class="header">
+    <div class="brand">
+      <h1>Grok Portfolio Replicator</h1>
+      <p class="subtitle">Monthly AI-driven portfolio analysis — white paper pipeline</p>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-tab="run">Run</button>
+      <button class="tab" data-tab="results">Results</button>
+      <button class="tab" data-tab="history">History</button>
+      <button class="tab" data-tab="settings">Settings</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- RUN -->
+    <section id="tab-run" class="panel active">
+      <div class="card hero-card">
+        <h2>Monthly Analysis</h2>
+        <p>Runs the full pipeline: macro report → S&P 500 scoring → top 30 → 15-asset portfolio.</p>
+        <div class="run-actions">
+          <button id="btn-run" class="btn btn-primary btn-lg">Run Monthly Analysis</button>
+          <button id="btn-resume" class="btn btn-secondary btn-lg" hidden>Resume Interrupted Run</button>
+          <button id="btn-cancel" class="btn btn-danger" disabled>Cancel</button>
+        </div>
+      </div>
+
+      <div class="card" id="progress-card" hidden>
+        <h3>Progress</h3>
+        <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
+        <p id="progress-step" class="progress-text">Waiting...</p>
+        <div class="stats-row">
+          <div class="stat"><span class="stat-label">Firms scored</span><span id="stat-scored" class="stat-value">0 / 0</span></div>
+          <div class="stat"><span class="stat-label">Running cost</span><span id="stat-cost" class="stat-value">$0.00</span></div>
+          <div class="stat"><span class="stat-label">Run ID</span><span id="stat-run-id" class="stat-value mono">—</span></div>
+        </div>
+        <pre id="progress-log" class="log"></pre>
+      </div>
+    </section>
+
+    <!-- RESULTS -->
+    <section id="tab-results" class="panel">
+      <div id="results-empty" class="empty-state">
+        <p>No results yet. Run the monthly analysis or load a run from History.</p>
+      </div>
+      <div id="results-content" hidden>
+        <div class="card">
+          <div class="card-header">
+            <h2>15-Asset Portfolio</h2>
+            <button type="button" id="btn-export-portfolio" class="btn btn-secondary" hidden>
+              Export to Excel
+            </button>
+          </div>
+          <div id="portfolio-output" class="markdown-body"></div>
+        </div>
+        <div class="card">
+          <h2>Macro Report</h2>
+          <div id="macro-output" class="markdown-body"></div>
+        </div>
+        <div class="card">
+          <h2>Firm Scores <span id="scores-count" class="badge"></span></h2>
+          <div class="table-wrap">
+            <table id="scores-table">
+              <thead>
+                <tr>
+                  <th data-sort="rank">#</th>
+                  <th data-sort="ticker">Ticker</th>
+                  <th data-sort="company">Company</th>
+                  <th data-sort="industry">Industry</th>
+                  <th data-sort="score">Score</th>
+                  <th>Report</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- HISTORY -->
+    <section id="tab-history" class="panel">
+      <div class="card">
+        <h2>Run History</h2>
+        <div id="history-list" class="history-list"></div>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="tab-settings" class="panel">
+      <div class="card">
+        <h2>API Keys &amp; Options</h2>
+        <form id="settings-form" class="form">
+          <label>
+            API Provider
+            <select id="api-provider">
+              <option value="xai">xAI (direct)</option>
+              <option value="openrouter">OpenRouter</option>
+            </select>
+          </label>
+          <label>
+            <span id="llm-key-label">xAI API Key</span>
+            <input type="password" id="xai-key" placeholder="Leave blank to keep existing" autocomplete="off" />
+          </label>
+          <label>
+            Stock News API Key
+            <input type="password" id="stocknews-key" placeholder="Leave blank to keep existing" autocomplete="off" />
+          </label>
+          <label>
+            Grok Model
+            <input type="text" id="model" value="grok-4.3" />
+            <span id="model-hint" class="field-hint">xAI: grok-4.3 · OpenRouter: x-ai/grok-4.3</span>
+          </label>
+          <label>
+            Max Tickers (0 = full S&P 500)
+            <input type="number" id="max-tickers" min="0" value="0" />
+          </label>
+          <label>
+            Concurrency
+            <input type="number" id="concurrency" min="1" max="32" value="8" />
+          </label>
+          <label>
+            News articles per ticker (1–50)
+            <input type="number" id="stocknews-items-per-ticker" min="1" max="50" value="15" />
+            <span class="field-hint">1 Stock News API call per ticker; article count does not add calls</span>
+          </label>
+          <label>
+            Macro market news articles (1–50)
+            <input type="number" id="stocknews-macro-items" min="1" max="50" value="25" />
+            <span class="field-hint">1 API call at the start of each run</span>
+          </label>
+          <button type="submit" class="btn btn-primary">Save Settings</button>
+          <p id="settings-status" class="hint"></p>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <div id="modal" class="modal" hidden>
+    <div class="modal-content">
+      <button class="modal-close" id="modal-close">&times;</button>
+      <h3 id="modal-title"></h3>
+      <pre id="modal-body" class="report-pre"></pre>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
