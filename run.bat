@@ -7,5 +7,5 @@ if not exist .venv (
 ) else (
   call .venv\Scripts\activate.bat
 )
-echo Starting Grok Portfolio Replicator at http://localhost:8765
+echo Starting Gecko PM at http://localhost:8765
 uvicorn app.main:app --reload --port 8765

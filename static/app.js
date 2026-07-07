@@ -1,4 +1,4 @@
-/** Grok Portfolio Replicator — frontend */
+/** Gecko PM — frontend */
 
 let currentRun = null;
 let eventSource = null;

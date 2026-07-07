@@ -1,4 +1,4 @@
-# Grok Portfolio Replicator
+# Gecko PM
 
 A local web app that replicates the monthly investment pipeline described in **The Grok Portfolio White Paper**:
 

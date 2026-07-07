@@ -112,7 +112,7 @@ class GrokClient:
         if self.provider == "openrouter":
             default_headers = {
                 "HTTP-Referer": "http://localhost:8765",
-                "X-Title": "Grok Portfolio Replicator",
+                "X-Title": "Gecko PM",
             }
         self._extra_headers = default_headers
         self.client = OpenAI(

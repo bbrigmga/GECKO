@@ -1,4 +1,4 @@
-"""Smoke tests for Grok Portfolio Replicator (no API keys required)."""
+"""Smoke tests for Gecko PM (no API keys required)."""
 
 from __future__ import annotations
 
@@ -83,7 +83,7 @@ def test_fastapi_app() -> None:
     client = TestClient(app)
     r = client.get("/")
     assert r.status_code == 200
-    assert "Grok Portfolio" in r.text
+    assert "Gecko PM" in r.text
 
     r = client.get("/api/settings")
     assert r.status_code == 200

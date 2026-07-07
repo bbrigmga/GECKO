@@ -1,1 +1,1 @@
-"""Grok Portfolio Replicator."""
+"""Gecko PM."""

@@ -1,4 +1,4 @@
-"""Monthly Grok Portfolio pipeline orchestration."""
+"""Gecko PM monthly pipeline orchestration."""
 
 from __future__ import annotations
 

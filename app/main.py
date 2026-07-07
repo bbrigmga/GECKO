@@ -1,4 +1,4 @@
-"""FastAPI application — local Grok Portfolio replicator."""
+"""FastAPI application — Gecko PM."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from app.pipeline import list_runs, load_run, runner, _redact_run
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "static"
 
-app = FastAPI(title="Grok Portfolio Replicator", version="1.0.0")
+app = FastAPI(title="Gecko PM", version="1.0.0")
 app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
 
 
@@ -59,7 +59,7 @@ def _mask_settings(s: Settings) -> SettingsResponse:
 
 @app.get("/favicon.ico")
 async def favicon() -> FileResponse:
-    return FileResponse(STATIC / "favicon.ico", media_type="image/svg+xml")
+    return FileResponse(STATIC / "favicon.png", media_type="image/png")
 
 
 @app.get("/")

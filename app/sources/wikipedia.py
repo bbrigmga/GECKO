@@ -16,7 +16,7 @@ WIKIMEDIA_FEED = "https://api.wikimedia.org/feed/v1/wikipedia/en/featured"
 
 _HEADERS = {
     "User-Agent": (
-        "GrokPortfolioReplicator/1.0 "
+        "GeckoPM/1.0 "
         "(https://localhost:8765; monthly portfolio research tool)"
     ),
     "Accept": "application/json, text/html",
