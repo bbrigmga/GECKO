@@ -11,6 +11,8 @@ from openai import OpenAI
 
 from app.prompts import allocation_prompt, firm_prompt, macro_prompt
 
+AVAILABLE_MODELS = ("grok-4.3", "grok-4.5")
+
 PROVIDERS = {
     "xai": {
         "base_url": "https://api.x.ai/v1",
@@ -202,11 +204,10 @@ class GrokClient:
         ticker: str,
         company_name: str,
         industry: str,
-        macro_news: str,
         financials: str,
         news: str,
     ) -> GrokResult:
-        prompt = firm_prompt(company_name, industry, macro_news, financials, news)
+        prompt = firm_prompt(company_name, industry, financials, news)
         response = self._create_response(prompt)
         result = self._to_result(response)
         score = parse_score(result.text)
@@ -224,7 +225,7 @@ class GrokClient:
             response = self._create_response(prompt, web_search=False)
             return self._to_result(response)
 
-    def generate_allocation(self, top_reports: str) -> GrokResult:
-        prompt = allocation_prompt(top_reports)
+    def generate_allocation(self, macro_report: str, top_reports: str) -> GrokResult:
+        prompt = allocation_prompt(macro_report, top_reports)
         response = self._create_response(prompt)
         return self._to_result(response)

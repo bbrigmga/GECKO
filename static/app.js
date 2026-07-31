@@ -19,26 +19,38 @@ document.querySelectorAll(".tab").forEach((tab) => {
 });
 
 // --- Settings ---
+function normalizeModel(model) {
+  return (model || "grok-4.3").replace(/^x-ai\//, "");
+}
+
 function updateProviderUI() {
   const provider = document.getElementById("api-provider").value;
   const label = document.getElementById("llm-key-label");
-  const modelInput = document.getElementById("model");
-  if (provider === "openrouter") {
-    label.textContent = "OpenRouter API Key";
-    if (modelInput.value === "grok-4.3") modelInput.value = "x-ai/grok-4.3";
-  } else {
-    label.textContent = "xAI API Key";
-    if (modelInput.value === "x-ai/grok-4.3") modelInput.value = "grok-4.3";
-  }
+  label.textContent = provider === "openrouter" ? "OpenRouter API Key" : "xAI API Key";
 }
 
 document.getElementById("api-provider").addEventListener("change", updateProviderUI);
+
+function formatMaxTickers(value) {
+  const n = parseInt(value, 10);
+  if (!n) return "full S&P 500";
+  return `${n} largest by market cap`;
+}
+
+function renderSavedSettingsSummary(data) {
+  const el = document.getElementById("settings-saved-summary");
+  if (!el) return;
+  const provider = data.api_provider === "openrouter" ? "OpenRouter" : "xAI";
+  el.textContent =
+    `Saved: ${formatMaxTickers(data.max_tickers)} · concurrency ${data.concurrency} · ` +
+    `${normalizeModel(data.model)} (${provider})`;
+}
 
 async function loadSettings() {
   const res = await fetch("/api/settings");
   const data = await res.json();
   document.getElementById("api-provider").value = data.api_provider || "xai";
-  document.getElementById("model").value = data.model;
+  document.getElementById("model").value = normalizeModel(data.model);
   document.getElementById("max-tickers").value = data.max_tickers;
   document.getElementById("concurrency").value = data.concurrency;
   document.getElementById("stocknews-items-per-ticker").value =
@@ -46,6 +58,7 @@ async function loadSettings() {
   document.getElementById("stocknews-macro-items").value =
     data.stocknews_macro_items ?? 25;
   updateProviderUI();
+  renderSavedSettingsSummary(data);
   const hints = [];
   if (data.xai_api_key_set) {
     hints.push(data.api_provider === "openrouter" ? "OpenRouter key saved" : "xAI key saved");
@@ -86,6 +99,7 @@ document.getElementById("settings-form").addEventListener("submit", async (e) =>
 // --- Run ---
 const btnRun = document.getElementById("btn-run");
 const btnResume = document.getElementById("btn-resume");
+const btnPortfolio = document.getElementById("btn-portfolio");
 const btnCancel = document.getElementById("btn-cancel");
 const progressCard = document.getElementById("progress-card");
 const progressFill = document.getElementById("progress-fill");
@@ -102,6 +116,7 @@ function log(msg) {
 
 function setRunning(running) {
   btnRun.disabled = running;
+  btnPortfolio.disabled = running;
   btnCancel.disabled = !running;
   progressCard.hidden = !running;
 }
@@ -122,11 +137,13 @@ function connectSSE() {
 function handleEvent(data) {
   if (data.type === "progress") {
     progressStep.textContent = data.message || data.step;
-    if (data.step === "scoring" || data.step === "scored") {
+    if (data.step === "scoring" || data.step === "scored" || data.step === "grok") {
       const done = data.done || 0;
       const total = data.total || 1;
       statScored.textContent = `${done} / ${total}`;
-      progressFill.style.width = `${Math.round((done / total) * 100)}%`;
+      if (data.step === "scoring" && total > 1) {
+        progressFill.style.width = `${Math.round((done / total) * 100)}%`;
+      }
     }
     if (data.cost_usd != null) {
       statCost.textContent = `$${data.cost_usd.toFixed(4)}`;
@@ -158,6 +175,48 @@ function handleEvent(data) {
 
 btnRun.addEventListener("click", () => startRun(false));
 btnResume.addEventListener("click", () => startRun(true));
+btnPortfolio.addEventListener("click", () => startPortfolioRun());
+
+function portfolioSourceRunId() {
+  if (currentResultsState?.top30?.length && currentResultsState.run_id) {
+    return currentResultsState.run_id;
+  }
+  return null;
+}
+
+async function startPortfolioRun() {
+  progressLog.textContent = "";
+  progressFill.style.width = "0%";
+  statScored.textContent = "—";
+  statCost.textContent = "$0.00";
+  setRunning(true);
+  connectSSE();
+
+  const sourceRunId = portfolioSourceRunId();
+  const url = sourceRunId
+    ? `/api/run/portfolio?source_run_id=${encodeURIComponent(sourceRunId)}`
+    : "/api/run/portfolio";
+  const res = await fetch(url, { method: "POST" });
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`;
+    try {
+      const err = await res.json();
+      detail = err.detail || JSON.stringify(err);
+    } catch {
+      detail = await res.text();
+    }
+    log(`Failed to start: ${detail}`);
+    setRunning(false);
+    return;
+  }
+  const data = await res.json();
+  currentRun = data.run_id;
+  statRunId.textContent = data.run_id;
+  log(
+    `Portfolio-only run ${data.run_id} (model: ${data.model}, source: ${data.source_run_id})`
+  );
+  progressFill.style.width = "50%";
+}
 
 async function startRun(resume) {
   progressLog.textContent = "";
@@ -183,14 +242,39 @@ async function startRun(resume) {
   const data = await res.json();
   currentRun = data.run_id;
   statRunId.textContent = data.run_id;
-  log(resume ? `Resumed run ${data.run_id}` : `Started run ${data.run_id}`);
+  if (resume) {
+    if (!data.resumed) {
+      log("Resume failed — no partial run found. Start a new run instead.");
+      setRunning(false);
+      return;
+    }
+    const already = data.already_scored ?? 0;
+    const pending = data.pending ?? 0;
+    const total = data.total ?? already + pending;
+    statScored.textContent = `${already} / ${total}`;
+    progressFill.style.width = `${Math.round((already / Math.max(total, 1)) * 100)}%`;
+    log(
+      `Resumed ${data.run_id}: ${already}/${total} scored, ${pending} to retry. ` +
+        `Watch for [grok] lines — those are OpenRouter calls.`
+    );
+  } else {
+    log(`Started run ${data.run_id}`);
+  }
 }
 
 async function checkResumable() {
   const res = await fetch("/api/runs");
   const runs = await res.json();
-  const resumable = runs.find((r) => ["running", "cancelled"].includes(r.status) && (r.firms_scored || 0) > 0);
-  btnResume.hidden = !resumable;
+  const resumable = runs.find((r) => r.resumable);
+  if (resumable) {
+    const scored = resumable.firms_scored || 0;
+    const total = resumable.universe_count || resumable.firms_attempted || "?";
+    btnResume.textContent = `Resume Run (${scored}/${total} scored)`;
+    btnResume.hidden = false;
+  } else {
+    btnResume.textContent = "Resume Interrupted Run";
+    btnResume.hidden = true;
+  }
 }
 
 btnCancel.addEventListener("click", async () => {
@@ -283,10 +367,12 @@ function parsePortfolioTable(text) {
   return rows;
 }
 
-function firmNameForTicker(ticker, firms) {
+function firmNameForTicker(ticker, stateOrFirms) {
+  const firms = stateOrFirms?.firms ?? stateOrFirms;
   const firm = firms?.[ticker];
   if (firm?.company) return firm.company;
-  return "";
+  const fromTop30 = (stateOrFirms?.top30 || []).find((f) => f.ticker === ticker);
+  return fromTop30?.company || "";
 }
 
 function csvEscape(value) {
@@ -322,16 +408,17 @@ function exportPortfolioToExcel() {
     return;
   }
 
-  const firms = currentResultsState.firms || {};
+  const runId = currentResultsState.run_id || "portfolio";
   const rows = holdings.map((row) => ({
+    run_id: runId,
     ticker: row.ticker,
-    company: firmNameForTicker(row.ticker, firms) || (row.type?.toLowerCase() === "etf" ? row.ticker : ""),
+    company: firmNameForTicker(row.ticker, currentResultsState) || (row.type?.toLowerCase() === "etf" ? row.ticker : ""),
     weight: row.weight,
     type: row.type,
   }));
 
-  const runId = currentResultsState.run_id || "portfolio";
   downloadCsv(`${runId}_portfolio.csv`, [
+    { key: "run_id", label: "Run ID" },
     { key: "ticker", label: "Ticker" },
     { key: "company", label: "Company" },
     { key: "weight", label: "Weight" },
@@ -339,13 +426,32 @@ function exportPortfolioToExcel() {
   ], rows);
 }
 
+function runModeLabel(state) {
+  if (state.mode !== "portfolio_only") return "";
+  const source = state.source_run_id ? ` from ${state.source_run_id}` : "";
+  const model = state.settings?.model ? ` · ${state.settings.model}` : "";
+  return `Portfolio only${source}${model}`;
+}
+
 function showResults(state) {
   currentResultsState = state;
   document.getElementById("results-empty").hidden = true;
   document.getElementById("results-content").hidden = false;
+  const runLabel = document.getElementById("results-run-label");
+  const label = runModeLabel(state);
+  if (label) {
+    runLabel.textContent = label;
+    runLabel.hidden = false;
+  } else {
+    runLabel.hidden = true;
+  }
   document.getElementById("portfolio-output").textContent = state.portfolio || "(No portfolio generated)";
   document.getElementById("macro-output").textContent = state.macro_report || "(No macro report)";
-  firmsData = Object.values(state.firms || {}).filter((f) => f.score != null);
+  firmsData = state.allocation_candidates?.length
+    ? [...state.allocation_candidates]
+    : state.top30?.length
+      ? [...state.top30]
+      : Object.values(state.firms || {}).filter((f) => f.score != null);
   firmsData.sort((a, b) => b.score - a.score);
   document.getElementById("scores-count").textContent = firmsData.length;
   const exportBtn = document.getElementById("btn-export-portfolio");
@@ -356,6 +462,29 @@ function showResults(state) {
 
 document.getElementById("btn-export-portfolio").addEventListener("click", exportPortfolioToExcel);
 
+// --- History favorites ---
+const FAVORITES_KEY = "gecko-favorite-runs";
+
+function getFavoriteRuns() {
+  try {
+    const raw = localStorage.getItem(FAVORITES_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((id) => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function toggleFavoriteRun(runId) {
+  if (!runId) return false;
+  const favorites = getFavoriteRuns();
+  const idx = favorites.indexOf(runId);
+  if (idx >= 0) favorites.splice(idx, 1);
+  else favorites.push(runId);
+  localStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites));
+  return favorites.includes(runId);
+}
+
 // --- History ---
 async function loadHistory() {
   const res = await fetch("/api/runs");
@@ -365,14 +494,31 @@ async function loadHistory() {
     list.innerHTML = '<p class="empty-state">No past runs yet.</p>';
     return;
   }
-  list.innerHTML = runs.map((r) => {
+
+  const favorites = new Set(getFavoriteRuns());
+  const sorted = [...runs].sort((a, b) => {
+    const aFav = favorites.has(a.run_id) ? 1 : 0;
+    const bFav = favorites.has(b.run_id) ? 1 : 0;
+    return bFav - aFav;
+  });
+
+  list.innerHTML = sorted.map((r) => {
     const runId = r.run_id || "";
+    const favorited = favorites.has(runId);
     const errLine = r.error ? `<p class="history-error">${esc(r.error)}</p>` : "";
+    const modeLine =
+      r.mode === "portfolio_only"
+        ? `<p class="history-mode">Portfolio only · from ${esc(r.source_run_id || "unknown")}</p>`
+        : "";
     return `
-    <div class="history-item">
+    <div class="history-item${favorited ? " favorited" : ""}">
+      <button type="button" class="btn-star${favorited ? " is-favorite" : ""}" data-star-id="${esc(runId)}"
+        aria-label="${favorited ? "Unfavorite" : "Favorite"} run" title="${favorited ? "Remove favorite" : "Add to favorites"}"
+        ${runId ? "" : "disabled"}>${favorited ? "★" : "☆"}</button>
       <div class="history-meta">
         <h4>${esc(runId)}</h4>
         <p>${esc(r.started_at || "")} · ${r.firms_scored || 0} firms · $${(r.total_cost_usd || 0).toFixed(4)}</p>
+        ${modeLine}
         ${errLine}
       </div>
       <span class="status-badge status-${esc(r.status || "unknown")}">${esc(r.status || "unknown")}</span>
@@ -387,6 +533,15 @@ async function loadHistory() {
       if (!runId) return;
       const res = await fetch(`/api/runs/${encodeURIComponent(runId)}`);
       if (res.ok) showResults(await res.json());
+    });
+  });
+
+  list.querySelectorAll("button[data-star-id]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const runId = btn.dataset.starId;
+      if (!runId) return;
+      toggleFavoriteRun(runId);
+      loadHistory();
     });
   });
 }

@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gecko PM — How It Works</title>
+  <link rel="icon" href="/favicon.ico" type="image/x-icon" sizes="any" />
+  <style>
+    :root {
+      --bg: #0f1419;
+      --surface: #1a2332;
+      --surface2: #243044;
+      --text: #e7ecf3;
+      --muted: #8b9cb3;
+      --accent: #3b82f6;
+      --accent2: #10b981;
+      --warn: #f59e0b;
+      --border: #2d3a4f;
+      --code-bg: #0a0e14;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    .deck { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+    header.hero {
+      text-align: center;
+      padding: 3rem 1rem 2rem;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 2rem;
+    }
+    header.hero h1 { font-size: 2.4rem; font-weight: 700; margin-bottom: 0.5rem; }
+    header.hero p { color: var(--muted); font-size: 1.1rem; max-width: 720px; margin: 0 auto; }
+    .badge { display: inline-block; background: var(--surface2); color: var(--accent2); padding: 0.2rem 0.6rem; border-radius: 999px; font-size: 0.8rem; margin-top: 1rem; }
+    nav.toc {
+      display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center;
+      margin: 1.5rem 0 2.5rem;
+    }
+    nav.toc a {
+      color: var(--accent); text-decoration: none; padding: 0.4rem 0.9rem;
+      border: 1px solid var(--border); border-radius: 6px; font-size: 0.9rem;
+      background: var(--surface);
+    }
+    nav.toc a:hover { background: var(--surface2); }
+    section.slide {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+      margin-bottom: 2rem;
+      scroll-margin-top: 1rem;
+    }
+    section.slide h2 {
+      font-size: 1.6rem; margin-bottom: 0.25rem;
+      color: #fff;
+    }
+    section.slide .subtitle { color: var(--muted); margin-bottom: 1.25rem; }
+    h3 { font-size: 1.15rem; margin: 1.5rem 0 0.75rem; color: #cbd5e1; }
+    h4 { font-size: 0.95rem; margin: 1rem 0 0.5rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    p, li { color: #c8d3e0; }
+    ul { padding-left: 1.25rem; margin: 0.5rem 0 1rem; }
+    li { margin: 0.35rem 0; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin: 1rem 0; }
+    .card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.1rem;
+    }
+    .card strong { display: block; color: #fff; margin-bottom: 0.35rem; }
+    .card span { color: var(--muted); font-size: 0.9rem; }
+    .flow {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem;
+      overflow-x: auto;
+      font-family: ui-monospace, Consolas, monospace;
+      font-size: 0.82rem;
+      line-height: 1.5;
+      white-space: pre;
+      color: #a5b4c8;
+    }
+    .step-row { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin: 1rem 0; }
+    .step {
+      background: var(--accent);
+      color: #fff;
+      padding: 0.35rem 0.75rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+    .arrow { color: var(--muted); font-size: 1.2rem; }
+    .meta { display: flex; flex-wrap: wrap; gap: 1rem; margin: 1rem 0; }
+    .meta div { background: var(--code-bg); padding: 0.5rem 0.85rem; border-radius: 6px; font-size: 0.85rem; }
+    .meta label { color: var(--muted); margin-right: 0.35rem; }
+    .meta value { color: var(--accent2); font-weight: 600; }
+    pre.sample {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      overflow: auto;
+      max-height: 520px;
+      font-family: ui-monospace, Consolas, "Courier New", monospace;
+      font-size: 0.78rem;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: #b8c5d6;
+    }
+    pre.sample.output { border-left: 3px solid var(--accent2); }
+    pre.sample.input { border-left: 3px solid var(--accent); }
+    .toggle-bar { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
+    button.toggle {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 0.4rem 0.85rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+    button.toggle:hover { border-color: var(--accent); }
+    .exhibit { color: var(--warn); font-size: 0.85rem; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.9rem; }
+    th, td { border: 1px solid var(--border); padding: 0.55rem 0.75rem; text-align: left; }
+    th { background: var(--surface2); color: #fff; }
+    td { color: #c8d3e0; }
+    footer { text-align: center; color: var(--muted); font-size: 0.85rem; padding: 2rem 0; }
+    @media print {
+      section.slide { break-inside: avoid; page-break-inside: avoid; }
+      pre.sample { max-height: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="deck">
+    <header class="hero">
+      <h1>Gecko PM</h1>
+      <p>A local web app that runs the monthly AI investment pipeline from <em>The Grok Portfolio White Paper</em>: macro analysis, S&amp;P 500 firm scoring, top-30 selection, and a 15-asset portfolio allocation.</p>
+      <span class="badge">Sample run: 2026-07-07_184747</span>
+    </header>
+
+    <nav class="toc">
+      <a href="#overview">Overview</a>
+      <a href="#sources">Data Sources</a>
+      <a href="#pipeline">Pipeline Flow</a>
+      <a href="#prompts">Prompts</a>
+      <a href="#firm-example">Firm Prompt (AMAT)</a>
+      <a href="#portfolio-example">Portfolio Prompt</a>
+      <a href="#storage">Persistence</a>
+    </nav>
+
+    <section id="overview" class="slide">
+      <h2>What is Gecko PM?</h2>
+      <p class="subtitle">Monthly portfolio research, automated end-to-end</p>
+      <p>Gecko PM (moon-machine-lite) is a FastAPI web app you run locally. Click <strong>Run Monthly Analysis</strong> and it orchestrates data collection, three Grok LLM calls per pipeline stage, and saves checkpointed results to disk.</p>
+      <div class="grid">
+        <div class="card"><strong>Macro report</strong><span>Grok synthesizes market news + Wikipedia + live web search into a 3-month economic outlook.</span></div>
+        <div class="card"><strong>Firm scoring</strong><span>Every S&amp;P 500 company gets a 1–100 score and investment report from Grok.</span></div>
+        <div class="card"><strong>Top 30</strong><span>Highest-scoring firms are ranked locally — no LLM call.</span></div>
+        <div class="card"><strong>Portfolio</strong><span>Grok builds a 15-asset monthly allocation with weights, thesis, edge, and risk.</span></div>
+      </div>
+      <h3>Tech stack</h3>
+      <ul>
+        <li><strong>Backend:</strong> Python, FastAPI, asyncio pipeline</li>
+        <li><strong>LLM:</strong> xAI Grok (or OpenRouter) via Responses API</li>
+        <li><strong>UI:</strong> Static dashboard at <code>localhost:8765</code> with SSE live progress</li>
+        <li><strong>Storage:</strong> JSON checkpoints under <code>runs/YYYY-MM/run_id/run.json</code></li>
+      </ul>
+    </section>
+
+    <section id="sources" class="slide">
+      <h2>Sources of Information</h2>
+      <p class="subtitle">Where each piece of data comes from (per white paper exhibits)</p>
+      <table>
+        <thead>
+          <tr><th>Data</th><th>Source</th><th>Used in</th><th>API calls per run</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>General market news (past ~7 days)</td><td><a href="https://stocknewsapi.com" style="color:var(--accent)">Stock News API</a></td><td>Macro context → macro report</td><td>1</td></tr>
+          <tr><td>Wikipedia current events + year pages</td><td>Wikimedia API</td><td>Macro context → macro report</td><td>~4 pages</td></tr>
+          <tr><td>Live web / X search</td><td>Grok (xAI tools)</td><td>Macro report enrichment</td><td>1 Grok call</td></tr>
+          <tr><td>S&amp;P 500 ticker list</td><td>GitHub CSV / Wikipedia fallback</td><td>Universe for scoring</td><td>1 HTTP fetch</td></tr>
+          <tr><td>Company financials (~90 fields)</td><td>Yahoo Finance via <code>yfinance</code></td><td>Each firm prompt</td><td>1 per ticker (local)</td></tr>
+          <tr><td>Per-ticker news headlines</td><td>Stock News API (filtered to 80+ outlets)</td><td>Each firm prompt</td><td>1 per ticker</td></tr>
+          <tr><td>Macro report text</td><td>Output of Step 1 Grok call</td><td>Injected into every firm prompt</td><td>—</td></tr>
+          <tr><td>Top 30 firm reports + scores</td><td>Output of firm scoring</td><td>Portfolio allocation prompt</td><td>—</td></tr>
+        </tbody>
+      </table>
+      <h3>News outlet filter</h3>
+      <p>Firm and macro news are filtered client-side to ~80 approved outlets (CNBC, Reuters, Bloomberg, WSJ, etc.) defined in <code>app/prompts.py</code> as <code>NEWS_SOURCES</code>. If no articles match, all returned articles are used.</p>
+    </section>
+
+    <section id="pipeline" class="slide">
+      <h2>Pipeline Flow</h2>
+      <p class="subtitle">Information flow from raw data to final portfolio</p>
+      <div class="step-row">
+        <span class="step">1. Macro inputs</span><span class="arrow">→</span>
+        <span class="step">2. Macro report</span><span class="arrow">→</span>
+        <span class="step">3. Score S&amp;P 500</span><span class="arrow">→</span>
+        <span class="step">4. Top 30</span><span class="arrow">→</span>
+        <span class="step">5. Portfolio</span>
+      </div>
+      <div class="flow">┌─────────────────────────────────────────────────────────────────────────────┐
+│ STEP 1 — Macro inputs                                                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Stock News API ──► general market news (25 articles)                        │
+│  Wikimedia API  ──► current events portal + 2025/2026 US year pages        │
+│       │                                                                      │
+│       └──► combined as macro_context string                                  │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ STEP 2 — Macro report  <span class="exhibit">(Exhibit 2D — macro_prompt)</span>                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Grok + web_search + x_search                                                │
+│       │                                                                      │
+│       └──► macro_report (economic timeline, rate/inflation/tariff forecasts) │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                    macro_report injected into every firm call
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ STEP 3 — Firm scoring (×500, concurrency=8)  <span class="exhibit">(Exhibit 1 — firm_prompt)</span>   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  For each S&amp;P 500 ticker:                                                    │
+│    Yahoo Finance ──► financials text (~90 Exhibit 2B fields)                 │
+│    Stock News API ──► ticker news (15 headlines)                             │
+│    macro_report  ──► macro-economic context                                  │
+│       │                                                                      │
+│       └──► Grok ──► Investment Report + Score: X (1–100)                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ STEP 4 — Top 30 (local sort, no LLM)                                         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Sort all scored firms by score descending → take top 30                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ STEP 5 — Portfolio  <span class="exhibit">(Exhibit 2E — allocation_prompt)</span>                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Concatenate all 30 reports + scores → Grok                                  │
+│       │                                                                      │
+│       └──► 15-asset table: weight, type, thesis, edge, risk                  │
+└─────────────────────────────────────────────────────────────────────────────┘</div>
+      <h3>Checkpointing</h3>
+      <p>After each major step, state is saved to <code>runs/</code>. Interrupted runs can resume — already-scored tickers are skipped.</p>
+    </section>
+
+    <section id="prompts" class="slide">
+      <h2>The Three Grok Prompts</h2>
+      <p class="subtitle">Verbatim white-paper exhibits in <code>app/prompts.py</code></p>
+      <div class="grid">
+        <div class="card">
+          <strong>macro_prompt(context)</strong>
+          <span class="exhibit">Exhibit 2D</span>
+          <span>3-month US economic timeline + forecast tables. Uses live web search.</span>
+        </div>
+        <div class="card">
+          <strong>firm_prompt(company, industry, macro, financials, news)</strong>
+          <span class="exhibit">Exhibit 1</span>
+          <span>Investment report in third person + numeric score 1–100. One call per S&amp;P 500 company.</span>
+        </div>
+        <div class="card">
+          <strong>allocation_prompt(top_reports)</strong>
+          <span class="exhibit">Exhibit 2E</span>
+          <span>15-asset monthly portfolio. May include stocks, ETFs, bonds, TIPS — not limited to top 30.</span>
+        </div>
+      </div>
+      <h3>Score parsing</h3>
+      <p>Grok's firm response is parsed for <code>Score: X</code> via regex. The score drives ranking; the full report text feeds the portfolio step.</p>
+    </section>
+
+    <section id="firm-example" class="slide">
+      <h2>Firm Prompt Example — AMAT</h2>
+      <p class="subtitle">Full input sent to Grok and actual output from run <code>2026-07-07_184747</code></p>
+      <div class="meta">
+        <div><label>Ticker:</label><value>AMAT</value></div>
+        <div><label>Company:</label><value>Applied Materials, Inc.</value></div>
+        <div><label>Industry:</label><value>Semiconductor Equipment &amp; Materials</value></div>
+        <div><label>Score:</label><value>52</value></div>
+        <div><label>Input size:</label><value>19,796 chars</value></div>
+      </div>
+      <p>The prompt template wraps injected data: macro report at the top, then Yahoo financials, then Stock News headlines. Financials and news were reconstructed from the same sources used at run time; the macro report and Grok output are from the saved run.</p>
+      <div class="toggle-bar">
+        <button class="toggle" onclick="expandPre(this, 'firm-in')">Expand input</button>
+        <button class="toggle" onclick="expandPre(this, 'firm-out')">Expand output</button>
+      </div>
+      <h4>Input — firm_prompt(...)</h4>
+      <pre id="firm-in" class="sample input">Pretend you are a financial expert with stock recommendation experience.
+Speak in the third person.
+You do not mention your credentials.
+Macro-economic data for context:
+**Next three months (July–early October 2026) will feature heavy economic data releases amid cooling tech/AI enthusiasm, ongoing geopolitical risks (especially Strait of Hormuz/Iran tensions), persistent tariff uncertainty under the Trump administration, and a cautious Federal Reserve under new Chair Kevin Warsh.**[[1]](https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm)[[1]](https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm)
+
+Q2 earnings season is underway or imminent, with focus on AI spending sustainability, margins, and broadening participation (small caps have outperformed recently). Markets show rotation away from the Magnificent 7 amid valuations concerns, AI capex ROI worries, and semiconductor weakness.[[2]](https://zforex.com/blog/general-trading/what-is-the-fomc-meeting-schedule/)[[3]](https://www.bls.gov/schedule/news_release/cpi.htm)
+
+**Geopolitical risks** (Hormuz threats raised to “severe,” tanker attacks) could drive oil volatility and inflation upside risks.[[4]](https://equalsmoney.com/economic-calendar/events/fomc-meeting) Trump administration tariff policy remains a wildcard, with effective rates elevated (historically high post-2025 adjustments) and potential for further sectoral or targeted increases.[[5]](https://www.jpmorgan.com/insights/global-research/current-events/us-tariffs)[[6]](https://taxfoundation.org/research/all/federal/trump-tariffs-trade-war/)
+
+### July 2026 (Special Attention – High Volatility Expected)
+- **Early July data releases**: Initial jobless claims, wholesale inventories, NFIB small business optimism, and New York Fed manufacturing survey. Wage growth gauge (Fed-relevant) expected around July 10–11.[[7]](https://www.marketwatch.com/economy-politics/calendar)
+- **Mid-July**: June CPI (core and headline) around July 14; this is a key inflation read post-geopolitical tensions and tariffs. Trade balance and retail sales data also due.[[3]](https://www.bls.gov/schedule/news_release/cpi.htm)
+- **Ongoing**: Q2 earnings from major tech/semiconductor/hyperscalers; AI spending scrutiny likely to dominate commentary. Small-cap outperformance may continue if domestic growth holds.[[8]](https://www.mitrade.com/ae-en/insights/others/trading-basics/FOMC-meetings-and-2026-FOMC-meetings-schedule)
+- **Late July**: FOMC meeting **July 28–29** (policy decision, dot plot/SEP elements possible in context). Markets will watch for any shift from “wait-and-see” under Warsh amid mixed inflation signals and geopolitics. Trump comments on the Fed could add noise.[[1]](https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm)[[1]](https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm)
+- **My expectations for July**: Elevated volatility from CPI + FOMC combo. Geopolitical oil risks and tariff effects could keep core inflation sticky; Fed likely holds rates steady (or signals hawkish tilt if data hot). Tech selloff/rotation continues; small caps/energy may see relative strength.
+
+### August–Early October 2026
+- **August**: July employment report (~Aug 7); July CPI (~Aug 12); PCE and other inflation reads; FOMC minutes/speeches. Continued earnings and potential tariff announcements or escalations.[[9]](https://www.bls.gov/schedule/news_release/current_year.asp)
+- **September**: August employment (~early Sep, around Labor Day timing); FOMC meeting **Sep 15–16** (with SEP—key for rate path signals); more inflation data and retail/consumer spending reads. Potential for policy reactions to mid-year growth/inflation trends.[[1]](https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm)
+- **Early October**: September employment (~Oct 2); September CPI (~Oct 14); another FOMC meeting **Oct 27–28**. Q3 GDP preview data and any pre-midterm (Nov) political maneuvering on economic policy.[[9]](https://www.bls.gov/schedule/news_release/current_year.asp)
+
+**Overall expectations across the period**: Data-dependent Fed holds or modest hawkish adjustments rather than aggressive easing, given inflation resilience and external risks. Broadening market participation (beyond Mag 7) likely persists if small-cap/domestic themes hold. Tariffs remain elevated with upside risk from ongoing negotiations or new measures. Geopolitical flare-ups in the Middle East could intermittently boost oil and inflation expectations. Earnings season may highlight AI fatigue vs. real-economy resilience.[[7]](https://www.marketwatch.com/economy-politics/calendar)[[10]](https://www.jpmorgan.com/insights/global-research/economy/fed-rate-cuts)
+
+### Forecast Table: Key Economic Variables (My Expectations vs. Market/Analyst Consensus)
+My forecasts incorporate the provided context (AI concerns, Hormuz risks, Warsh Fed, tariff persistence, rotation) plus standard data calendars. Market views drawn from recent pricing, Fed projections, and analyst commentary (e.g., elevated hike odds in some futures, sticky inflation).[[11]](https://www.ishares.com/us/insights/fed-outlook-2026-interest-rate-forecast)[[12]](https://www.fidelity.com/learning-center/trading-investing/the-fed-meeting)[[13]](https://www.cnbc.com/2026/06/17/fed-interest-rate-decision-june-2026.html)
+
+**Next Month (July/Aug data impact)**  
+- **Fed Funds Rate (target range, end-period)**: My expectation: 3.75–4.00% (hold or +25 bp if CPI hot). Market: Similar range, with ~40–60% odds of hike priced by year-end in some tools; Fed dot plot median around 3.8% for end-2026.  
+- **CPI YoY (headline/core, latest releases)**: My expectation: 3.8–4.3% / 2.8–3.2% (sticky due to tariffs/oil). Market: ~3.9–4.2% headline; analysts see moderation but geopolitics add upside risk.  
+- **Effective Tariff Rate (trade-weighted)**: My expectation: 12–16% (persistent high levels, possible modest increases). Market/Analyst: ~10–15% baseline, with upside from new measures; historical highs post-adjustments.  
+- **Unemployment Rate**: My expectation: 4.1–4.3% (stable/slight rise). Market: ~4.1–4.2%.  
+- **Other (e.g., retail sales growth YoY or PMI)**: My expectation: Solid but moderating consumer data; small-cap supportive ISM readings. Market: Mixed, with AI/data center capex caution.
+
+**Next Quarter (through Oct, cumulative impact)**  
+- **Fed Funds Rate (target range, end-Oct)**: My expectation: 3.75–4.25% (hold or one 25 bp move; cautious Warsh tilt amid risks). Market: Mostly holds near 3.75–4.00%; some pricing of hikes into 2027 per JPM/others; Fed SEP median ~3.8% end-year.  
+- **CPI YoY (Sep release)**: My expectation: 3.7–4.1% / 2.7–3.1% (persistent pressures). Market: Gradual decline toward 3.5% but tariff/geopolitics could stall it.  
+- **Effective Tariff Rate**: My expectation: 13–18% (possible escalation). Market/Analyst: Stable-to-higher (11–20% range cited); Section 122/232 extensions or new probes likely.  
+- **Unemployment Rate (latest)**: My expectation: 4.2–4.4%. Market: ~4.2%.  
+- **Other**: My expectation: Q3 GDP ~1.8–2.2% (resilient but tariff drag); rotation benefits small caps/energy. Market: Similar growth; earnings caution on hyperscaler margins.[[14]](https://www.guggenheiminvestments.com/services/advisor-resources/us-economic-calendar)
+
+These are forward-looking and subject to rapid shifts from data surprises, geopolitics, or policy tweets. Markets are pricing more volatility than consensus calm; my base case leans toward a “higher for longer” Fed bias with gradual broadening in equities.
+Financial data for Applied Materials, Inc.:
+Previous Close Price: 554.5
+Opening Price: 547.1
+Lowest Price of the Day: 546.18
+Highest Price of the Day: 577.409
+Previous Close Price (Regular Market): 554.5
+Opening Price (Regular Market): 547.1
+Lowest Price of the Day (Regular Market): 546.18
+Highest Price of the Day (Regular Market): 577.409
+Annual Dividend Rate: 2.12
+Dividend Yield: 0.38
+Payout Ratio (Dividend Payout as Percentage of Earnings): 0.1731
+Five-Year Average Dividend Yield: 0.79
+Beta (Volatility Measure): 1.567
+Price-to-Earnings Ratio (Trailing 12 Months): 52.9235
+Price-to-Earnings Ratio (Forward 12 Months): 34.3353
+Daily Volume of Shares Traded: 3246633
+Daily Volume of Shares Traded (Regular Market): 3246633
+Average Volume of Shares Traded: 9112837
+Average Volume of Shares Traded (Last 10 Days): 15032430
+Bid Price: 559.29
+Ask Price: 558.88
+Bid Size (Number of Shares): 1
+Ask Size (Number of Shares): 1
+Market Capitalization: 447503335424
+52-Week Low Price: 154.47
+52-Week High Price: 739.67
+Price-to-Sales Ratio (Trailing 12 Months): 15.4184
+50-Day Moving Average Price: 496.984
+200-Day Moving Average Price: 343.327
+Annual Dividend Rate (Trailing 12 Months): 1.91
+Dividend Yield (Trailing 12 Months): 0.00344454
+Trading Currency: USD
+Enterprise Value: 439277518848
+Profit Margins: 0.29314
+Float Shares (Shares Available to Public): 790775653
+Shares Outstanding: 793959430
+Shares Sold Short: 21911355
+Shares Sold Short in the Previous Month: 18310121
+Short Interest Date of Previous Month: 1781481600
+Short Interest as Percentage of Outstanding Shares: 0.0277
+Insider Holdings Percentage: 0.00305
+Institutional Holdings Percentage: 0.85073
+Short Ratio (Days to Cover Short Positions): 2.51
+Implied Shares Outstanding: 793959430
+Book Value per Share: 30.114
+Price-to-Book Ratio: 18.7167
+Last Fiscal Year End Date: 1761436800
+Next Fiscal Year End Date: 1792972800
+Most Recent Quarter Date: 1777161600
+Earnings Growth (Quarterly): 0.313
+Net Income to Common Stockholders: 8508000256
+Earnings per Share (Trailing 12 Months): 10.65
+Earnings per Share (Forward 12 Months): 16.4156
+Price/Earnings to Growth (PEG) Ratio: 1.5
+Last Stock Split Factor: 2:1
+Last Stock Split Date: 1019001600
+Enterprise Value to Revenue Ratio: 15.135
+Enterprise Value to EBITDA Ratio: 47.361
+52-Week Price Change Percentage: 1.83791
+S&amp;P 500 52-Week Price Change Percentage: 0.198074
+Last Dividend Value: 0.53
+Last Dividend Payment Date: 1779321600
+Highest Target Price (Analyst Forecast): 900
+Lowest Target Price (Analyst Forecast): 358
+Mean Target Price (Analyst Forecast): 586.629
+Median Target Price (Analyst Forecast): 540
+Recommendation Mean (Analyst Consensus): 1.48718
+Recommendation Key (Analyst Rating): strong_buy
+Number of Analyst Opinions: 35
+Total Cash: 8240999936
+Cash per Share: 10.38
+EBITDA (Earnings Before Interest, Taxes, Depreciation, and Amortization): 9274999808
+Total Debt: 7267999744
+Quick Ratio (Liquidity Measure): 1.624
+Current Ratio (Liquidity Measure): 2.508
+Total Revenue: 29024000000
+Debt-to-Equity Ratio: 30.399
+Revenue per Share: 36.485
+Return on Assets (ROA): 0.14858
+Return on Equity (ROE): 0.39692
+Free Cash Flow: 3040375040
+Operating Cash Flow: 7992999936
+Earnings Growth Rate: 0.335
+Revenue Growth Rate: 0.114
+Gross Profit Margins: 0.48956
+EBITDA Margins: 0.31956
+Operating Margins: 0.31896
+Financial Currency: USD
+Price/Earnings to Growth (PEG) Ratio (Trailing): 1.5235
+Audit Risk Level: 2
+Board Risk Level: 2
+Compensation Risk Level: 1
+Shareholder Rights Risk Level: 1
+Overall Risk Level: 1
+Recent news headlines for Applied Materials, Inc.:
+- [Seeking Alpha] Wed, 08 Jul 2026 07:42:40 -0400: Top 50 High-Quality Dividend Growth Stocks For July 2026
+  I track a curated universe of 50 high-quality dividend growth stocks to identify opportune entry points based on valuation and future return potential. Year-to-date through June, the investable universe returned 8.69%, trailing SPY (10.10%) and SCHD (17.50%), but several individual stocks outperformed significantly. Currently, 39 out of 50 stocks offer a forward return estimate of at least 10%, with 22 appearing potentially undervalued by my free cash flow model.
+
+- [Zacks Investment Research] Tue, 07 Jul 2026 18:46:07 -0400: Applied Materials (AMAT) Dips More Than Broader Market: What You Should Know
+  Applied Materials (AMAT) closed the most recent trading day at $554.5, moving 6.46% from the previous trading session.
+
+- [Market Watch] Tue, 07 Jul 2026 15:05:00 -0400: Elon Musk&#x27;s Terafab could give a major boost to this corner of the chip sector
+  SpaceX could spend about $135 billion on wafer-fab equipment over the next five years, UBS said.
+
+- [Benzinga] Tue, 07 Jul 2026 13:20:32 -0400: Chip Rout Drags Nasdaq 100 Lower, Oil Climbs: Stock Market Today
+  A deepening sell-off in chip and memory stocks dragged all four major U.S. equity indexes lower by midday Tuesday.
+
+- [CNBC] Tue, 07 Jul 2026 13:16:51 -0400: Chip stocks sell off after Samsung earnings fall short of high AI bar
+  Semiconductor stocks dropped as investors overlooked Samsung&#x27;s upbeat results. It&#x27;s the latest sign that beating results isn&#x27;t enough to please investors in the AI revolution
+
+- [Zacks Investment Research] Tue, 07 Jul 2026 11:26:08 -0400: AMAT Stock Rises 284% From Its 52-Week Low: Should You Buy Now?
+  After a 284% rebound from its 52-week low, Applied Materials still has AI-driven demand, portfolio breadth and earnings momentum supporting further growth.
+
+- [Zacks Investment Research] Tue, 07 Jul 2026 11:01:10 -0400: Best Momentum Stock to Buy for July 7th
+  AMAT, ONTO and BSET made it to the Zacks Rank #1 (Strong Buy) momentum stocks list on July 7, 2026.
+
+- [24/7 Wall Street] Tue, 07 Jul 2026 10:27:59 -0400: Intel and Applied Materials Dive 10%, AMD Craters 8% as Samsung Earnings Trigger Chip Selloff
+  Shares of Intel (NASDAQ:INTC | INTC Price Prediction) are down 10% in Tuesday morning trading to $110, while Advanced Micro Devices (NASDAQ:AMD) stock is off 8% to $508.
+
+- [24/7 Wall Street] Mon, 06 Jul 2026 14:50:36 -0400: The Second-Biggest Stock Sale in History Hits the Nasdaq Friday, and Chip Stocks Are Ripping
+  SK Hynix, the world&#x27;s second-largest memory-chip maker, is coming to the NASDAQ on Friday with the largest stock sale anyone has priced in years, and the chip complex is already pricing it in.
+
+- [Zacks Investment Research] Mon, 06 Jul 2026 10:01:09 -0400: Is Trending Stock Applied Materials, Inc. (AMAT) a Buy Now?
+  Applied Materials (AMAT) has received quite a bit of attention from Zacks.com users lately. Therefore, it is wise to be aware of the facts that can impact the stock&#x27;s prospects.
+
+- [Schaeffers Research] Mon, 06 Jul 2026 08:52:13 -0400: 2 Chip Stocks Driving Today&#x27;s Rally With Lofty Bull Notes
+  Lam Research Corp (NASDAQ:LRCX) and Applied Materials Inc (NASDAQ:AMAT) are contributing to the semiconductor and memory stock rally this morning, after Goldman Sachs hiked its price targets on both names to $380 and $645, respectively.
+
+- [The Motley Fool] Mon, 06 Jul 2026 06:03:42 -0400: Here&#x27;s Why This Semiconductor ETF Rewarded Investors in June
+  The ETF offers diversified exposure to the semiconductor sector, rather than top-heavy exposure to Nvidia. Al application growth and capital investment is driving chip demand right now.
+
+- [Seeking Alpha] Sun, 05 Jul 2026 21:10:57 -0400: Semiconductors Winners And Losers At The Start Of H2 2026
+  Semis put in a powerful performance in Q2 2026 thanks to things going its way, which more than made up for what happened in Q1 2026. It is not the only thing that matters, but if semis are to add to gains in H2 2026, AI will need to keep driving growth forward. The AI thesis remains intact, but recent developments leave open the possibility the thesis could still turn out to be flawed.
+
+- [Schwab Network] Sat, 04 Jul 2026 13:00:20 -0400: Tech Corner: AMAT Riding the AI Semiconductor Boom
+  Applied Materials (AMAT) is becoming one of the biggest beneficiaries of the AI semiconductor buildout, supplying the advanced manufacturing equipment needed to produce next-generation chips. In this Tech Corner, George Tsilis breaks down how Applied Materials is capitalizing on surging demand for advanced packaging, DRAM, and leading-edge foundry technologies, along with the record earnings and raised outlook fueling the stock&#x27;s rally.
+
+- [Zacks Investment Research] Fri, 03 Jul 2026 10:31:09 -0400: Is It Worth Investing in Applied Materials (AMAT) Based on Wall Street&#x27;s Bullish Views?
+  The recommendations of Wall Street analysts are often relied on by investors when deciding whether to buy, sell, or hold a stock. Media reports about these brokerage-firm-employed (or sell-side) analysts changing their ratings often affect a stock&#x27;s price.
+
+- [24/7 Wall Street] Fri, 03 Jul 2026 10:18:19 -0400: Michael Burry Shorts Micron, Adding to His NVIDIA and Applied Materials Short Bets Against Chip Stocks
+  Michael Burry, the Scion Asset Management founder popularized in The Big Short, disclosed a new short position against Micron Technology (NASDAQ:MU | MU Price Prediction) in a Substack post dated July 2.
+
+- [Seeking Alpha] Thu, 02 Jul 2026 12:36:48 -0400: Applied Materials, Inc. (AMAT) Discusses DRAM and Advanced Packaging Innovations for AI-Driven Semiconductor Growth Prepared Remarks Transcript
+  Applied Materials, Inc. (AMAT) Discusses DRAM and Advanced Packaging Innovations for AI-Driven Semiconductor Growth Prepared Remarks Transcript
+
+- [The Motley Fool] Thu, 02 Jul 2026 11:16:00 -0400: Applied Materials Is Silently Powering the AI Boom. Here&#x27;s Why.
+  Chipmakers need essential equipment to make their chips. That&#x27;s where Applied Materials comes into play.
+
+- [Zacks Investment Research] Thu, 02 Jul 2026 11:15:19 -0400: Best Momentum Stocks to Buy for July 2nd
+  ROK, AMAT, and BBCP made it to the Zacks Rank #1 (Strong Buy) momentum stocks list on July 2, 2026.
+
+- [Zacks Investment Research] Wed, 01 Jul 2026 18:45:46 -0400: Applied Materials (AMAT) Suffers a Larger Drop Than the General Market: Key Insights
+  In the latest trading session, Applied Materials (AMAT) closed at $650.91, marking a -9.97% move from the previous day.
+
+- [Zacks Investment Research] Wed, 01 Jul 2026 09:16:26 -0400: Semiconductor ETFs to Buy as Micron Leads $2T AI-Led Chip Market Rally
+  MU&#x27;s AI-driven memory surge fuels a historic rally, making semiconductor ETFs a diversified way to tap the industry&#x27;s broad-based momentum.
+
+- [Seeking Alpha] Wed, 01 Jul 2026 08:23:23 -0400: Top 25 High-Growth Dividend Stocks For July 2026
+  The July 2026 Top 25 High-Growth Dividend Stocks list targets high-quality companies with strong dividend growth and attractive valuations. The list&#x27;s average starting yield is 1.13%, with a collective 5-year dividend growth rate of 16.24% and an estimated +23% annual long-term return. Key standouts include Nvidia (NVDA) for growth and undervaluation, Accenture (ACN) and Intuit (INTU) for high yields, and Monolithic Power (MPWR) for dividend growth.
+
+- [Zacks Investment Research] Tue, 30 Jun 2026 16:26:08 -0400: Applied Materials (AMAT) Hits New All-Time Highs: Still Time to Buy Stock in the AI Chip Equipment Leader?
+  AMAT has been one of the hottest stocks in the tech sector, climbing to fresh all-time highs of $739 a share in Tuesday&#x27;s trading session, and has now rallied nearly 200% year to date.
+
+- [Benzinga] Tue, 30 Jun 2026 10:44:01 -0400: Stock Of The Day: Is This The Top For Applied Materials?
+  Applied Materials, Inc.  (NASDAQ:AMAT) shares are rising on Tuesday. The move comes after positive comments from a brokerage firm.
+Based on the provided financial data and news headlines, please assign a score (from 1 to 100) reflecting the potential investment value of company Applied Materials, Inc. in the Semiconductor Equipment &amp; Materials industry for the next month.
+First, write a short investment report about the firm situation.
+Include sections of recent news, financials, valuations, and economic outlook affecting the firm.
+Do not recommend alternatives.
+Do not mention the word &#x27;provided&#x27; instead use &#x27;recent&#x27; or &#x27;latest&#x27;.
+Do not speak directly to investors nor recommend actions.
+Start with &#x27;Investment Report:&#x27;
+Finally, in a new line, output Score: X.</pre>
+      <h4>Output — Grok response (parsed score: 52)</h4>
+      <pre id="firm-out" class="sample output">Investment Report:
+Recent news highlights intense pressure on semiconductor equipment stocks, including Applied Materials, amid a broad chip selloff triggered by Samsung&#x27;s earnings shortfall relative to elevated AI expectations. Multiple reports note double-digit declines in names like Intel and AMD, with Applied Materials experiencing similar intraday weakness, though some coverage emphasizes its ongoing role in AI-driven DRAM and advanced packaging demand.
+Financials reflect solid operational performance, with trailing twelve-month revenue at $29.02 billion, profit margins near 29.3 percent, and quarterly earnings growth of 31.3 percent. Return on equity stands at 39.7 percent, supported by free cash flow of $3.04 billion and EBITDA margins of 32.0 percent, indicating resilience in core manufacturing equipment operations.
+Valuations show a trailing price-to-earnings ratio of 51.59 and a forward ratio of 33.34, paired with a PEG of 1.52 and an enterprise value to revenue multiple of 16.18. The stock trades below recent highs near $739 but well above the 200-day moving average of $341.45, with analyst consensus centering on a mean target of $578.91.
+Economic outlook affecting the firm centers on elevated volatility from July CPI and FOMC decisions, alongside persistent tariff effects and geopolitical oil risks that could sustain sticky inflation and limit aggressive easing. Sector rotation away from AI names and scrutiny of capex sustainability add near-term headwinds for Applied Materials.
+Score: 52</pre>
+    </section>
+
+    <section id="portfolio-example" class="slide">
+      <h2>Portfolio Prompt Example</h2>
+      <p class="subtitle">Full allocation_prompt input and output from run <code>2026-07-07_184747</code></p>
+      <div class="meta">
+        <div><label>Top 30 tickers:</label><value>TJX, AEP, TECH, CAH, CFG, DVA, DAL, EME, FLEX, GILD, HWM, LLY, NOC, RTX, ROST, TTWO, TRGP, WM, ABBV, IBM, RSG, A, LNT, ALL, MO, AIG, AMT, AMP, APH, AON</value></div>
+        <div><label>Input size:</label><value>54,768 chars</value></div>
+        <div><label>Output size:</label><value>3,921 chars</value></div>
+      </div>
+      <p>The portfolio prompt concatenates all 30 highest-scoring firm reports (with ticker, company, score headers). Grok may allocate across stocks and ETFs — it is not required to use all 30 names.</p>
+      <div class="toggle-bar">
+        <button class="toggle" onclick="expandPre(this, 'port-in')">Expand input</button>
+        <button class="toggle" onclick="expandPre(this, 'port-out')">Expand output</button>
+      </div>
+      <h4>Input — allocation_prompt(top_reports)</h4>
+      <pre id="port-in" class="sample input">Now, I want a 15-asset portfolio where we will invest for the next month (rebalancing in one month) in a table with weight, thesis, edge, and risk. Weight this portfolio to perform positively given the market conditions and to beat the S&amp;P 500. We have the following reports for the stocks that were scored the highest:
+Ticker: TJX | Company: The TJX Companies, Inc. | Score: 84
+Investment Report:
+Recent news highlights TJX&#x27;s positioning in a resilient retail environment, with analysts noting outperformance in same-store sales and expansion momentum through banners like HomeGoods and Marmaxx. Coverage also references inclusion in rotation-oriented selections and broader strength in value-focused retail amid consumer pressures. Multiple assessments point to consistent earnings beats and international growth opportunities in Europe and beyond.
+Financials reflect solid operational results, including trailing earnings per share of 5.14 with quarterly growth near 29 percent and revenue expansion of 9 percent year-over-year. Profit margins stand at 9.4 percent, supported by operating cash flow exceeding 7.5 billion and free cash flow above 4.3 billion. Liquidity metrics show a current ratio of 1.14 alongside modest debt levels relative to equity.
+Valuations indicate a trailing price-to-earnings ratio of 29.77 and forward ratio of 26.57, with a price-to-book of 16.26 and PEG ratio near 3.3. The dividend yield registers at 1.27 percent, below the five-year average of 1.33 percent, while market capitalization exceeds 169 billion and enterprise value reaches 175.7 billion. Analyst consensus maintains a strong-buy stance with a mean target near 177.63.
+Economic outlook affecting the firm centers on persistent inflation and tariff effects expected through July and into early October 2026, with potential oil volatility from geopolitical tensions supporting demand for off-price retail channels. Cooling enthusiasm for tech segments and Fed policy caution under the new chair may favor domestic consumer staples and value-oriented names like TJX amid rotation trends and small-cap resilience.
+Score: 84
+
+---
+
+Ticker: AEP | Company: American Electric Power Company, Inc. | Score: 82
+Investment Report:
+Recent news highlights American Electric Power Company, Inc. positioning for growth tied to data center electricity demand and infrastructure upgrades. Multiple analyses note robust contracted load expansion, a raised $78 billion five-year capital plan, and continued earnings beats with double-digit revenue increases. Coverage emphasizes stable operations amid grid modernization and renewable investments, alongside recognition in defensive and dividend-focused lists.
+Financials show trailing twelve months earnings per share at 6.76 with 9.3 percent quarterly earnings growth and 10.2 percent revenue growth. Operating cash flow reached 7.01 billion while free cash flow remains negative amid heavy capital deployment. Profit margins stand at 16.3 percent with EBITDA margins at 40.7 percent.
+Valuations reflect a forward price-to-earnings ratio of 20.18 and price-to-book ratio of 2.37. The stock trades near its 52-week high of 140.58 with a market capitalization of 75.32 billion. Analyst consensus indicates a buy rating with a mean target price of 145.43, supported by a 2.79 percent dividend yield and 55.62 percent payout ratio.
+Economic outlook affecting the firm points to potential support for regulated utilities through resilient domestic demand themes and rotation away from technology sectors. Elevated geopolitical risks and sticky inflation readings could favor low-beta assets like this one, though persistent tariffs and a cautious Federal Reserve stance may constrain broader rate relief.
+Score: 82
+
+---
+
+Ticker: TECH | Company: Bio-Techne Corporation | Score: 82
+Investment Report:
+Bio-Techne Corporation operates in the biotechnology tools and reagents segment, where recent news centers on the June 2025 announcement of an all-cash acquisition by Merck KGaA at $73 per share for an enterprise value of $11.3 billion. Multiple shareholder investigations have followed, questioning the fairness of the process and price, while the stock rose sharply on the deal news and has since traded near the offer level amid standard closing conditions.
+Financials show recent quarterly results with modest revenue pressures from academic funding trends offset by double-digit growth in large pharma channels and expansion in areas such as spatial biology; trailing earnings came in slightly below estimates yet margins expanded, with free cash flow remaining positive and a dividend maintained at the prior quarterly rate.
+Valuations reflect the pending transaction through a forward price-to-earnings ratio near 34.5, a trailing ratio above 100, and a price-to-book near 5.3, all positioned against the $73 cash bid that represents a premium to recent trading levels and analyst targets clustered around 69.
+Economic outlook affecting the firm includes elevated market volatility expected from July data releases on inflation and employment, a cautious Federal Reserve stance, and tariff or geopolitical factors that could influence broader life-sciences spending, though the cash acquisition structure limits direct exposure to these variables over the near term.
+Score: 82
+
+---
+
+Ticker: CAH | Company: Cardinal Health, Inc. | Score: 82
+Investment Report:
+Recent news indicates Cardinal Health maintains positive analyst coverage with multiple Zacks reports highlighting its value, momentum, and growth attributes alongside a Seeking Alpha assessment that assigns a buy rating based on defensive fundamentals, 11% revenue growth, and 35% adjusted EPS expansion in Q3FY26. Strategic moves into specialty healthcare further support the narrative of sustained profitability gains despite GAAP pressures from costs.
+Financials show trailing twelve-month revenue of 250735001600 with 11% growth, EBITDA of 3993999872, free cash flow of 4849999872, and earnings per share of 6.56, though quarterly earnings growth registers negative at -0.211 amid operating margins of 0.01413. The firm carries total debt of 8915999744 against total cash of 3936999936, yielding a current ratio of 0.907 and quick ratio of 0.419.
+Valuations reflect a forward price-to-earnings ratio of 19.9203, price-to-sales ratio of 0.223226, and enterprise value to EBITDA of 15.215, with a market capitalization of 55970512896 near the 52-week high of 243.19. Analyst consensus points to a mean target price of 246.6 and recommendation mean of 1.47059, while the dividend yield stands at 0.86% with a low beta of 0.493.
+Economic outlook affecting the firm centers on elevated volatility from July CPI releases, the July FOMC meeting, persistent tariff uncertainty, and geopolitical oil risks that could sustain inflation pressures through early October, favoring defensive healthcare distributors amid rotation away from high-valuation tech sectors and toward stable domestic themes.
+Score: 82
+
+---
+
+Ticker: CFG | Company: Citizens Financial Group, Inc. | Score: 82
+Investment Report:
+Recent news indicates Citizens Financial Group maintains positive momentum through conference participation, AI-driven efficiency gains, and a robust small business sentiment survey showing half of owners anticipating revenue growth. Additional coverage highlights strong preferred share coverage, community investments, and inclusion in stress tests with the lowest projected capital deterioration in seven years. Analyst notes emphasize continued EPS expansion and margin resilience amid diversified operations.
+Financials reveal quarterly earnings growth of 38.6 percent alongside annual revenue growth of 13.8 percent, supported by operating margins near 32 percent and return on equity of 7.74 percent. Cash reserves stand at over 13 billion dollars while total debt remains manageable relative to enterprise value.
+Valuations reflect a forward price-to-earnings ratio of 11.15 and price-to-book of 1.27, positioning the shares attractively against trailing multiples near 17. Dividend payout remains conservative at 41.7 percent with an annualized yield of 2.55 percent, while analyst targets average 74.62 against a current price level near 72.
+Economic outlook affecting the firm centers on expected Federal Reserve steadiness near 3.75-4.00 percent through October amid sticky inflation and tariff pressures, alongside rotation favoring domestic and small-cap themes that align with regional banking exposure. Volatility from geopolitical oil risks and data releases may influence near-term trading, yet broadening participation beyond large-cap technology supports sector resilience.
+Score: 82
+
+---
+
+Ticker: DVA | Company: DaVita Inc. | Score: 82
+Investment Report: 
+DaVita Inc. operates in the Medical Care Facilities industry with a focus on kidney care delivery. 
+
+Recent news: Multiple Zacks reports highlight the firm&#x27;s inclusion among top non-AI S&amp;P 500 performers for the second half of 2026, alongside repeated Strong Buy growth rankings and notes on advancements in integrated kidney care expansion, AI-driven scheduling, and community-based programs that support value-based models. 
+
+Financials: Latest quarterly results reflect 21.2 percent earnings growth and 43.5 percent overall earnings expansion, with revenue growth at 6 percent, operating margins of 13.86 percent, and positive free cash flow exceeding 999 million amid EBITDA margins near 20 percent. Debt levels remain elevated with a debt-to-equity ratio above 1,200, though the current ratio of 1.417 and quick ratio of 1.283 indicate adequate liquidity, supported by over 666 million in total cash. 
+
+Valuations: Forward price-to-earnings stands at 13.51 with a PEG ratio of 0.73, while trailing price-to-sales measures 1.077 and enterprise value to EBITDA reaches 10.56; analyst targets show a mean near 193.71 against a recent trading range up to the 52-week high of 239.64, with beta at 0.882 reflecting moderate volatility. 
+
+Economic outlook affecting the firm: Macro conditions through early October 2026 point to data-driven Federal Reserve policy with limited easing, potential tariff effects on costs, and geopolitical oil risks that could sustain inflation pressures, yet healthcare delivery remains positioned for resilience amid equity market rotation toward non-technology names and domestic themes. 
+
+Score: 82
+
+---
+
+Ticker: DAL | Company: Delta Air Lines, Inc. | Score: 82
+Investment Report:
+Recent news indicates Delta Air Lines has seen coordinated analyst target upgrades from firms including Goldman Sachs and TD Cowen, alongside expectations for an earnings beat driven by strong bookings and lower fuel costs. Headlines also note record highs in the broader market coinciding with airline sector momentum from declining jet fuel prices and sustained travel demand, including international segments during off-peak periods. Reports highlight Delta&#x27;s premium revenue growth and loyalty program performance ahead of the July 10 quarterly release, while some commentary flags potential volatility from labor expenses.
+Financials reflect revenue growth of 12.9 percent alongside profit margins of 6.867 percent and operating cash flow of 8.396 billion dollars. The company maintains total revenue exceeding 65 billion dollars, with EBITDA margins at 11.929 percent and return on equity of 24.99 percent, though elevated total debt of 21.399 billion dollars contributes to a debt-to-equity ratio of 105.021 and current ratio of 0.418.
+Valuations show a trailing price-to-earnings ratio of 12.9365 and forward ratio of 10.7648, with a PEG ratio of 0.21. Additional metrics include a price-to-sales ratio of 0.893239, price-to-book ratio of 2.84177, and enterprise value to EBITDA of 9.808, while the stock trades near the upper end of its 52-week range with a market capitalization of 58.22 billion dollars.
+Economic outlook affecting the firm centers on July volatility from CPI releases and the FOMC meeting amid persistent tariff effects and geopolitical oil price risks, which could influence fuel costs despite recent declines supporting airline operations. Broader market rotation and inflation data may shape sector performance through early October, with expectations for stable but monitored consumer travel trends.
+Score: 82
+
+---
+
+Ticker: EME | Company: EMCOR Group, Inc. | Score: 82
+Investment Report:
+Recent news indicates EMCOR Group has seen multiple upgrades and positive coverage highlighting gains from electrical construction momentum, record backlog of $15.62B, AI data-center demand, and institutional infrastructure projects. The firm declared a quarterly dividend of $0.40 per share and was upgraded to a Zacks Rank of Strong Buy, with recent trading sessions showing outperformance relative to broader market returns amid sector rotation.
+Financials reflect robust quarterly earnings growth of 26.9% and annual revenue growth of 19.7%, supported by net income of $1.34B, operating cash flow of $1.19B, and return on equity of 39.2%. Margins remain solid with gross profit at 19.3% and EBITDA margins at 10.4%, while total debt stays low relative to enterprise value.
+Valuations position the firm with a trailing P/E of 25.64 and forward P/E of 23.36, alongside a PEG ratio of 0.41 and price-to-book of 8.77. Analyst targets average around $1,000, with the stock trading near $787 after intraday volatility, below recent 50-day moving averages but supported by institutional holdings near 97%.
+Economic outlook affecting the firm centers on persistent infrastructure spending in data centers and energy amid cooling broader tech enthusiasm and tariff-related inflation risks through July, with a cautious Federal Reserve stance likely to sustain volatility in construction-related equities.
+Score: 82
+
+---
+
+Ticker: FLEX | Company: Flex Ltd. | Score: 82
+Investment Report:
+Recent News
+Flex Ltd. has benefited from multiple positive developments in recent weeks, including its selection for inclusion in the S&amp;P 500 Index effective June 22, 2026. Latest coverage highlights robust AI data center demand, multiyear hyperscaler contracts, and the upcoming spin-off of its cloud and power infrastructure segment. Additional reporting notes the launch of a turnkey liquid-cooled server solution through its JetCool subsidiary and expansion via the acquisition of Electrical Power, positioning the firm for growth in AI infrastructure and grid modernization.
+Financials
+Latest quarterly results show revenue of $27.91 billion with revenue growth of 16.9% and earnings growth of 17.1%. Net income stands at $880 million, supported by operating cash flow of $1.68 billion and free cash flow of $840 million. Profit margins register at 3.15%, while EBITDA margins reach 7.38%. The balance sheet reflects total debt of $4.46 billion against cash holdings of $2.39 billion, yielding a current ratio of 1.359 and debt-to-equity of 86.8.
+Valuations
+Trailing P/E stands at 55.88 while the forward P/E improves to 18.74, with a PEG ratio of 0.94. Price-to-sales registers at 1.71 and price-to-book at 9.26. Enterprise value reaches $52.87 billion, equating to an EV/revenue of 1.89 and EV/EBITDA of 25.67. Analyst consensus indicates a mean target price of 160.4 with a strong buy rating across 10 opinions.
+Economic Outlook Affecting the Firm
+Macro conditions over the next month feature elevated volatility from the July CPI release and FOMC meeting on July 28–29, alongside persistent tariff effects and geopolitical oil risks that could sustain sticky inflation. The firm operates within the electronic components sector where AI infrastructure spending provides resilience despite broader market rotation away from large-cap technology names and cautious Federal Reserve policy under the new chair.
+Score: 82
+
+---
+
+Ticker: GILD | Company: Gilead Sciences, Inc. | Score: 82
+Investment Report:
+Recent news for Gilead Sciences, Inc. highlights multiple positive regulatory developments, including FDA and European Commission approvals expanding Trodelvy into first-line metastatic triple-negative breast cancer, alongside FDA acceptance of an application for a once-weekly oral formulation of Yeztugo for HIV prevention. Analyst commentary points to underestimation of the growth runway from the HIV franchise, which accounts for a substantial portion of sales, while Jim Cramer has described biotech as entering a favorable period for deal activity.
+Financials show revenue of approximately 29.7 billion with profit margins near 31 percent, return on equity of 43.36 percent, and quarterly earnings growth of 53.7 percent. Operating cash flow stands at over 10.8 billion, supported by solid free cash flow generation and revenue growth of 4.4 percent, reflecting resilience in core HIV and emerging oncology segments.
+Valuations indicate a trailing price-to-earnings ratio of 18.37 and a forward multiple of 14.02, with a PEG ratio of 2.14 and price-to-book of 7.13. Analyst consensus reflects a buy rating with a mean target price of 157.67, suggesting the shares trade below projected levels amid a current trading range near 130.
+Economic outlook affecting the firm centers on persistent inflation pressures, tariff uncertainties, and Federal Reserve caution through October 2026, which could introduce volatility in healthcare costs and supply chains. Nonetheless, the sector may exhibit relative stability from steady demand for therapeutics, alongside potential rotation toward domestic-focused companies amid broader market shifts away from technology leadership.
+Score: 82
+
+---
+
+Ticker: HWM | Company: Howmet Aerospace Inc. | Score: 82
+Investment Report:
+Recent news highlights Howmet Aerospace Inc. benefiting from robust demand in defense aerospace alongside commercial aerospace strength, with military program expansions supporting an upgraded 2026 outlook; additional coverage notes the company&#x27;s role in aerospace and AI infrastructure value chains through industrial gas turbine exposure, alongside earnings momentum from aftermarket parts and spares that drove quarterly revenue growth of 19 percent year-over-year.
+Financials indicate solid quarterly earnings growth of 68.6 percent alongside revenue expansion of 19.1 percent, supported by profit margins near 20 percent, return on equity of 33.8 percent, and positive free cash flow exceeding 1.19 billion dollars, with total debt managed at 4.85 billion dollars against cash holdings of 2.44 billion dollars.
+Valuations reflect a trailing price-to-earnings ratio of 63.44 and forward ratio of 45.35, paired with a price-to-book ratio of 19.86 and enterprise value to EBITDA near 44, though analyst consensus places the mean target price at 305.98 with a strong buy recommendation across 20 firms.
+Economic outlook affecting the firm centers on elevated geopolitical risks that sustain defense spending and aerospace build rates, even as broader market volatility from upcoming CPI releases, Federal Reserve decisions, and tariff uncertainties may pressure rotations away from high-valuation names during the next month.
+Score: 82
+
+---
+
+Ticker: LLY | Company: Eli Lilly and Company | Score: 82
+Investment Report:
+Recent news for Eli Lilly and Company highlights continued momentum in its GLP-1 portfolio, including regulatory tailwinds from Medicare&#x27;s new coverage of obesity drugs and the launch of its oral pill Foundayo. Competitor setbacks at Kailera Therapeutics supported share gains to record levels, while a commercialization agreement with Innovent Biologics expanded access for Verzenios in China. Broader biotech sector commentary pointed to potential M&amp;A acceleration under favorable regulatory conditions.
+Financials for Eli Lilly and Company reflect robust profitability with profit margins near 35 percent, revenue growth of 55.5 percent, and earnings growth of 169.9 percent over the latest quarter. Operating cash flow reached 20.5 billion, supporting free cash flow of 9.2 billion, while total debt remained manageable relative to enterprise value. Dividend payout stayed conservative at 22 percent of earnings.
+Valuations for Eli Lilly and Company show a trailing P/E of 43.7 and forward P/E of 27.7, alongside a PEG ratio of 1.57 and price-to-book of 35.3. The stock trades near its 52-week high with low beta of 0.51, indicating reduced volatility relative to the broader market. Analyst consensus maintains a buy rating with a median target near current levels.
+Economic outlook affecting Eli Lilly and Company centers on elevated volatility from July FOMC and CPI releases amid tariff persistence and geopolitical oil risks, yet resilient consumer spending and small-cap rotation could provide support. Medicare expansion for GLP-1 therapies offers a structural offset to macro uncertainties through year-end.
+Score: 82
+
+---
+
+Ticker: NOC | Company: Northrop Grumman Corporation | Score: 82
+Investment Report:
+Northrop Grumman Corporation operates in the Aerospace &amp; Defense industry amid ongoing geopolitical tensions that support sector demand.
+Recent news
+Latest headlines highlight NATO announcements of major defense procurement agreements, including potential purchases of up to five MQ-4C Triton surveillance drones involving Northrop Grumman by allies such as Norway, Finland, Germany, and Denmark. Additional coverage notes contract wins in missile systems, SEWIP electronic warfare programs, and GQM-163A target support, alongside broader references to resilient defense backlogs exceeding $95 billion and expanding lunar economy exposure.
+Financials
+Latest quarterly metrics indicate revenue growth of 4.4 percent year over year, earnings growth near 84.9 percent, operating margins of 11.69 percent, and free cash flow of approximately $2.07 billion. The firm maintains total revenue of $42.367 billion, net income to common stockholders of $4.576 billion, EBITDA of $7.307 billion, and a debt-to-equity ratio of 102.682 alongside a current ratio of 1.152.
+Valuations
+Latest ratios show a trailing price-to-earnings multiple of 17.1462, forward price-to-earnings of 18.1224, price-to-book of 4.53627, and enterprise value to EBITDA of 12.766. The shares trade near a 52-week low relative to the high of 774, with analyst consensus targets reflecting a mean of 689.332 and an overall buy rating from 21 opinions.
+Economic outlook affecting the firm
+The broader environment features elevated geopolitical risks centered on Strait of Hormuz and Iran developments that favor defense spending, alongside persistent tariff uncertainty and a Federal Reserve likely to hold rates steady through the July FOMC meeting. Cooling technology enthusiasm coincides with market rotation that may sustain relative strength in small-cap and defense names, while upcoming Q2 earnings on July 21 will emphasize backlog visibility and margin trends.
+Score: 82
+
+---
+
+Ticker: RTX | Company: RTX Corporation | Score: 82
+Investment Report:
+Recent news indicates RTX Corporation advancing missile production expansions through NATO partnerships for AMRAAM and Stinger systems, securing a major U.S. Navy contract for AIM-9X missiles, and declaring a quarterly dividend. Additional developments include Pratt &amp; Whitney engine milestones and upcoming Q2 earnings release on July 23, with analysts noting upgrades and resilience in defense demand amid geopolitical pressures.
+Financials show quarterly earnings growth of 34.1% and revenue growth of 8.7%, supported by operating cash flow of 11.12 billion and free cash flow of 7.23 billion. Profit margins stand at 8.03%, with total debt at 38.93 billion offset by a current ratio of 1.024 and total revenue reaching 90.37 billion.
+Valuations reflect a trailing P/E of 37.66 and forward P/E of 26.54, alongside a PEG ratio of 2.73 and price-to-book of 4.09. The dividend yield is 1.45%, with analyst consensus pointing to a mean target price of 215.68 and a buy rating across 22 opinions, against a recent share price near 201.
+Economic outlook affecting the firm centers on elevated geopolitical tensions in the Strait of Hormuz and broader defense spending needs, which align with RTX&#x27;s backlog visibility, even as tariff uncertainties and a cautious Federal Reserve outlook introduce potential volatility through early October.
+Score: 82
+
+---
+
+Ticker: ROST | Company: Ross Stores, Inc. | Score: 82
+Investment Report:
+Recent News
+Ross Stores has delivered standout Q1 2026 results with total sales rising 21 percent and earnings per share advancing 37 percent, supported by broad customer acquisition and operating margins that expanded 120 basis points year over year. Multiple analyses highlight continued momentum from store expansion, merchandising improvements, and resilience against e-commerce pressures, with traffic gains observed across demographics including younger shoppers. Recent commentary also notes gains from lower gas prices that bolster consumer selectivity in favor of off-price formats.
+Financials
+Ross Stores reports trailing twelve-month earnings per share of 7.17 and forward earnings per share of 8.55, alongside quarterly earnings growth of 35.6 percent and revenue growth of 20.6 percent. Profit margins stand at 9.74 percent with return on equity at 38.98 percent and return on assets at 12.16 percent. Free cash flow reached 2.05 billion dollars while total debt remains modest relative to cash holdings of 4.13 billion dollars. Dividend payout remains conservative at 23.18 percent of earnings.
+Valuations
+Trailing price-to-earnings stands at 29.83 while forward price-to-earnings registers 25.03. Enterprise value to EBITDA equals 19.93 and price-to-book reaches 10.89. Analyst consensus indicates a buy rating with a mean target price of 256.18, implying further upside from recent trading levels near 214, and the PEG ratio of 2.52 reflects measured growth expectations. Short interest remains contained at 3.88 percent of shares outstanding.
+Economic Outlook Affecting the Firm
+Near-term macro releases including CPI readings and the July FOMC meeting introduce volatility that could sustain elevated tariff and oil-price risks, yet resilient consumer spending on value-oriented apparel supports off-price retailers. Rotation toward domestic and small-cap themes alongside lower gas prices aligns with Ross Stores&#x27; traffic trends, positioning the company favorably amid persistent inflation pressures.
+Score: 82
+
+---
+
+Ticker: TTWO | Company: Take-Two Interactive Software, Inc. | Score: 82
+Investment Report:
+Recent News
+Take-Two Interactive has generated significant attention through announcements regarding Grand Theft Auto VI pre-orders beginning June 25, 2026, with a launch price of $79.99 set for November 19. Multiple reports highlight potential for strong initial sales momentum and franchise monetization upside, including analyst commentary on pricing power and recurrent consumer spending growth. Coverage also notes operational efficiencies from AI initiatives in mobile gaming ahead of the major release.
+Financials
+Latest results show trailing twelve-month revenue at $6.66 billion with revenue growth of 6.1 percent and gross margins at 57.7 percent, supported by expansion in recurrent consumer spending and mobile segments. Free cash flow stands at $1.45 billion while EBITDA reaches $788 million, though net income remains negative at -$298 million and profit margins sit at -4.5 percent. The balance sheet reflects total cash of nearly $2 billion against total debt of $2.96 billion and a current ratio of 1.24.
+Valuations
+Forward price-to-earnings stands at 25.7 times on projected earnings of $10.01 per share, with a price-to-sales ratio of 7.18 and price-to-book of 13.59. Enterprise value to revenue equals 7.35 while the PEG ratio registers 3.56. Analyst consensus indicates a mean target of $281.90 and a strong buy rating across 29 opinions, with the stock trading near its 52-week high of $265.65.
+Economic Outlook Affecting the Firm
+Macro conditions through early October 2026 point to elevated volatility from CPI releases, an FOMC meeting in late July, persistent tariff effects, and geopolitical oil risks that could pressure consumer discretionary spending. Broader market rotation toward small-cap and domestic themes may provide relative support for gaming equities if inflation remains sticky and the Federal Reserve maintains a cautious stance under the new chair.
+Score: 82
+
+---
+
+Ticker: TRGP | Company: Targa Resources Corp. | Score: 82
+Investment Report: 
+Targa Resources Corp. maintains a strong position in the Oil &amp; Gas Midstream industry amid elevated volatility expectations. Recent news highlights record first-quarter results with net income rising to $480 million, EBITDA guidance raised to $5.7–$5.9 billion, and a 25 percent dividend increase to $1.25 per share. Coverage from multiple sources emphasizes Permian Basin expansion, fee-based cash flow growth, and project backlogs supporting volume increases in natural gas liquids transport.
+Financials reflect robust trailing twelve months earnings per share of $9.8 alongside quarterly earnings growth of 77.3 percent. Operating cash flow stands at $3.7 billion while EBITDA reaches $5.2 billion, though free cash flow remains negative at $319 million due to ongoing capital expenditures. Revenue for the trailing period totals $16.6 billion with profit margins at 12.9 percent and operating margins at 20.9 percent.
+Valuations indicate a trailing price-to-earnings ratio of 27.8 and a forward ratio of 22.1, supported by a PEG ratio of 1.25. The price-to-book ratio registers 18.7 against a book value per share of $14.61, while enterprise value to EBITDA equals 14.5. Analyst consensus shows a mean target price of $285.71 with a buy rating across 21 opinions, and the current price range sits near $263–$272.
+Economic outlook affecting the firm centers on geopolitical tensions that could elevate oil volatility and support energy volumes, alongside potential tariff impacts on inflation that may favor domestic midstream assets. Broader market rotation toward small-cap and energy themes coincides with forecasts for stable-to-rising unemployment and persistent core inflation readings through the third quarter.
+Score: 82
+
+---
+
+Ticker: WM | Company: Waste Management, Inc. | Score: 82
+Investment Report:
+Recent news on Waste Management highlights its positioning as a durable operator with pricing discipline and network advantages in the waste sector, alongside updates on renewable energy and recycling initiatives that support expansion. The firm scheduled its Q2 2026 earnings release and conference call for late July, coinciding with key macro events. Analyst coverage notes its scale and stability relative to peers in environmental services, with emphasis on broad revenue growth from efficiency gains and ancillary operations.
+Financials indicate solid trailing performance, with revenue of $25.41 billion, net income to common stockholders of $2.79 billion, and operating cash flow of $6.34 billion. Profit margins stand at 10.99 percent, while EBITDA margins reach 30.15 percent. Quarterly earnings growth registers at 13.5 percent, and return on equity measures 29.94 percent. Debt levels remain elevated with a debt-to-equity ratio of 228.41, though free cash flow supports dividend coverage at a payout ratio of 49.49 percent.
+Valuations reflect a premium for stability, including a trailing P/E of 34.33, forward P/E of 25.69, and price-to-book of 9.54. The stock trades above its 50-day and 200-day moving averages near $221, with a market capitalization of $95.41 billion and analyst consensus targets clustered around $256. Dividend yield holds at 1.55 percent on an annual rate of $3.54, consistent with a five-year average near 1.49 percent. Beta of 0.45 underscores lower volatility.
+Economic outlook affecting the firm centers on July volatility from CPI releases, FOMC decisions, tariff effects, and geopolitical oil risks, which could sustain sticky inflation. The company’s defensive characteristics, inflation-protected cash flows, and domestic focus position it for relative resilience amid rotations away from technology and potential small-cap broadening.
+Score: 82
+
+---
+
+Ticker: ABBV | Company: AbbVie Inc. | Score: 81
+Investment Report:
+Recent news indicates multiple positive regulatory developments for AbbVie, including European Commission approval of TEPKINLY in combination with lenalidomide and rituximab for relapsed or refractory follicular lymphoma, alongside positive CHMP opinions for RINVOQ in severe alopecia areata and non-segmental vitiligo. Additional milestones encompass FDA approval of SKYRIZI for pediatric use in psoriatic disease, Phase 3 success for epcoritamab in diffuse large B-cell lymphoma, and the acquisition of Apogee Therapeutics to bolster the immunology franchise. These updates coincide with upcoming Q2 earnings focused on Skyrizi and Rinvoq performance.
+Financials reflect total revenue of 62.8 billion USD with revenue growth of 12.4 percent, operating cash flow of 21.2 billion USD, and EBITDA of 29.9 billion USD. Profit margins stand at 5.8 percent alongside gross margins of 72 percent, supported by an annual dividend rate of 6.92 USD and a trailing dividend yield of 2.72 percent. Total debt reaches 72.9 billion USD with a current ratio of 0.8, while free cash flow registers at 20.8 billion USD.
+Valuations show a trailing P/E ratio of 124.9 contrasted with a forward P/E of 15.7 and PEG ratio of 0.43. Enterprise value to EBITDA measures 17.2, price-to-sales stands at 7.2, and price-to-book registers negative due to book value per share of -3.77. Market capitalization approximates 450 billion USD, with the share price near the 52-week high of 261.64 and 50-day moving average at 219.71.
+Economic outlook affecting the firm centers on elevated volatility from July CPI releases and the late-July FOMC meeting amid tariff persistence and geopolitical oil risks that may sustain sticky inflation around 3.8–4.3 percent. The cautious Federal Reserve stance under Chair Warsh favors a higher-for-longer bias, yet AbbVie&#x27;s domestic focus and pipeline momentum may benefit from market rotation toward resilient sectors beyond technology.
+Score: 81
+
+---
+
+Ticker: IBM | Company: International Business Machines Corporation | Score: 81
+Investment Report:
+Recent news indicates IBM has introduced compact z17 and LinuxONE systems to ease data center constraints alongside AI software upgrades, while advancing quantum computing through partnerships yielding initial fusion materials computations. Analyst coverage reflects upward price target adjustments and reiterated bullish outlooks, with media highlighting the firm&#x27;s positioning in enterprise AI and quantum amid broader market rotations.
+Financials show consistent revenue growth of 9.5 percent alongside earnings growth of 14.2 percent, supported by profit margins near 15.6 percent, operating cash flow exceeding 13.9 billion dollars, and a stable dividend yield of 2.26 percent with a payout ratio of 59.47 percent.
+Valuations reflect a trailing P/E of 27.50 declining to a forward P/E of 23.05, a PEG ratio of 2.70, and a price-to-book of 8.85, with the share price trading above both 50-day and 200-day moving averages amid market capitalization near 292 billion dollars.
+Economic outlook affecting the firm incorporates elevated volatility from upcoming CPI releases, FOMC decisions, and tariff uncertainties, which may sustain demand for hybrid cloud and quantum solutions while exposing the business to sticky inflation and geopolitical oil risks over the next month.
+Score: 81
+
+---
+
+Ticker: RSG | Company: Republic Services, Inc. | Score: 81
+Investment Report:
+Republic Services demonstrates resilience through its core waste management operations amid market rotations and elevated economic uncertainty. Recent news highlights consistent earnings beats in the first quarter of 2026, supported by pricing power and margin expansion to 32.1 percent adjusted EBITDA, alongside new sustainability initiatives such as the San Bernardino organics facility and California&#x27;s first fully electric fleet. Multiple analyst notes emphasize volume growth, acquisition activity, and the stock&#x27;s defensive profile against cyclical pressures.
+Financials reflect steady performance with trailing twelve-month EPS of 6.97, return on equity at 18.346 percent, and free cash flow exceeding 1.8 billion dollars. Quarterly earnings growth reached 7.5 percent, while revenue advanced 2.6 percent year-over-year, with gross margins holding above 43 percent despite modest volume fluctuations.
+Valuations indicate a forward P/E ratio of 27.577 alongside a PEG ratio near 3.15, positioning the shares at a premium yet aligned with analyst consensus targets averaging 243.58 and a buy rating from 24 firms. The dividend payout ratio remains conservative at 35.22 percent, supporting ongoing increases within a low-beta framework of 0.405.
+Economic outlook factors in persistent inflation risks from tariffs and geopolitical oil volatility over the next month, where the company&#x27;s non-discretionary demand and pricing discipline provide insulation. A cautious Federal Reserve stance and market rotation toward defensive sectors align with Republic Services&#x27; low-volatility characteristics and potential outperformance relative to high-valuation technology peers.
+Score: 81
+
+---
+
+Ticker: A | Company: Agilent Technologies, Inc. | Score: 78
+Investment Report:
+Recent news for Agilent Technologies, Inc. highlights the launch of an AI-driven analysis module for its xCELLigence RTCA eSight platform, which streamlines imaging processes for researchers. The firm also completed the acquisition of Biocare Medical, integrating immunohistochemistry and related solutions into its Life Sciences and Diagnostics Markets Group, a move expected to broaden its clinical pathology offerings.
+Financials indicate stable performance with trailing twelve-month revenue of 7.232 billion USD and profit margins at 19.55 percent. Operating cash flow reached 1.452 billion USD, supported by earnings growth of 57.7 percent quarter-over-quarter and return on equity of 21.33 percent. Liquidity metrics remain sound, with a current ratio of 2.099 and total cash of 1.807 billion USD.
+Valuations show a trailing price-to-earnings ratio of 26.24 alongside a forward price-to-earnings ratio of 19.76 and PEG ratio of 1.16. The price-to-book ratio stands at 5.18, while enterprise value to EBITDA equals 19.17. Analyst consensus reflects a buy rating with a mean target price of 160.33.
+Economic outlook affecting the firm centers on elevated volatility from upcoming CPI releases and the July FOMC meeting, alongside persistent tariff pressures and geopolitical oil risks that may sustain inflation. Broader market rotation toward small caps and domestic themes could limit near-term upside for large-cap healthcare names despite resilient consumer data trends.
+Score: 78
+
+---
+
+Ticker: LNT | Company: Alliant Energy Corporation | Score: 78
+Investment Report:
+Recent news highlights Alliant Energy Corporation&#x27;s benefits from data center load growth and a $13.4 billion investment plan supporting regulated demand and clean energy expansion. Latest earnings results showed ongoing EPS of $0.82 for Q1 2026, aligning with estimates, alongside revenue increases near 5% year over year, while dividend payments continued at $0.535 per share for 322 consecutive quarters.
+Financials reflect a regulated electric utility model with profit margins of 0.186, EBITDA margins of 0.420, and modest quarterly earnings growth of 5.2%. Revenue reached $4.42 billion with a 5% growth rate, though free cash flow remained negative at $1.20 billion amid elevated total debt of $11.84 billion and a debt-to-equity ratio of 159.5. Operating cash flow stood at $1.29 billion, with return on equity at 0.113.
+Valuations indicate a trailing P/E of 24.5 and forward P/E of 21.1, alongside a PEG ratio of 2.7. The dividend yield measures 2.72% with a payout ratio of 0.647, while price-to-book stands at 2.71 and enterprise value to EBITDA at 16.97. The stock trades near its 52-week high of 78.81, with analyst mean target price at 79.13 and consensus rating leaning toward buy.
+Economic outlook affecting the firm centers on July 2026 volatility from CPI releases, FOMC decisions, tariffs, and geopolitical oil risks, which could keep inflation sticky and support defensive utilities. Data center-driven demand persists amid broader market rotation away from tech, positioning the firm for relative stability despite potential rate holds near 3.75-4.00%.
+Score: 78
+
+---
+
+Ticker: ALL | Company: The Allstate Corporation | Score: 78
+Investment Report:
+Recent news indicates Allstate scheduled its Q2 2026 earnings call for August 6, following a period of strong profitability restoration through underwriting gains and premium increases. Multiple analyses highlight the firm&#x27;s successful turnaround, including combined ratio improvements to around 82 percent and sustained dividend payments of $1.08 per share. Additional coverage notes resilience ahead of the 2026 hurricane season and positions the insurer among peers benefiting from pricing discipline amid moderating claims inflation.
+Financials show robust quarterly earnings growth exceeding 200 percent year-over-year, driven by higher premiums, lower catastrophe losses, and expense controls. Trailing twelve-month net income reached approximately $12 billion, with return on equity at 45 percent and free cash flow exceeding $12 billion. The balance sheet reflects solid liquidity metrics alongside an annual dividend rate of $4.32, supported by a low payout ratio near 9 percent.
+Valuations reflect an attractive profile with a trailing price-to-earnings ratio of 5.62 and forward ratio of 9.63, alongside a price-to-book ratio of 2.21 and price-to-sales near 0.96. Enterprise value to EBITDA stands at 4.58, while the stock trades close to its 52-week high of 257.67 amid a beta of 0.166. Analyst consensus indicates a buy rating with a mean target price of 241.64 across 22 opinions.
+Economic outlook affecting the firm centers on elevated volatility from upcoming CPI releases, Federal Reserve policy decisions, and persistent tariff uncertainty, which could sustain sticky inflation pressures on claims costs. Geopolitical risks around oil markets introduce upside potential for investment income in a higher-rate environment, while the data-dependent policy stance supports broader market rotation that may favor stable domestic insurers. Broadening equity participation beyond large technology names aligns with Allstate&#x27;s domestic focus and earnings resilience.
+Score: 78
+
+---
+
+Ticker: MO | Company: Altria Group, Inc. | Score: 78
+Investment Report:
+Recent news highlights Altria Group, Inc.&#x27;s strong domestic position in the tobacco sector through brands like Marlboro, alongside consistent free cash flow generation and pricing power that positions the company as an income source amid market rotations. Coverage also notes comparisons with Philip Morris International on smoke-free expansion efforts and recognition of Altria among dividend kings and safer S&amp;P 500 holdings yielding up to 5.9 percent.
+Financials indicate robust profitability with profit margins near 39.5 percent, EBITDA margins of 77.5 percent, and operating margins at 62.3 percent, supported by trailing twelve-month revenue of 20.38 billion and free cash flow exceeding 8.54 billion. Quarterly earnings growth reached 102.7 percent, though total debt stands at 24.60 billion against cash holdings of 3.53 billion, yielding a current ratio of 0.619.
+Valuations reflect a trailing P/E of 15.14 and forward P/E of 12.34, with a PEG ratio of 1.66 and price-to-sales of 5.94. The stock trades near its 52-week high of 74.56, with a 50-day moving average of 71.15 and beta of 0.494, while market capitalization reaches 121.12 billion and short interest remains low at 3.1 percent of outstanding shares.
+Economic outlook affecting the firm centers on elevated volatility from upcoming CPI releases and the July FOMC meeting, alongside persistent tariff pressures and geopolitical oil risks that could sustain inflation. The cautious Federal Reserve stance and market rotation toward defensive sectors align with Altria&#x27;s low-volatility profile and dividend characteristics.
+Score: 78
+
+---
+
+Ticker: AIG | Company: American International Group, Inc. | Score: 78
+Investment Report:
+Recent news indicates that AIG has appointed Christine Williams as Head of Global Client and Broker Relationships and Nancy Bewlay as Global Chief Underwriting Officer, both effective in September 2026, to strengthen enterprise relationships and underwriting strategy. Additional developments include the planned report of Q2 2026 financial results on August 6 followed by a conference call, acquisition of Everest Colombia to expand Latin American operations, election of Tom Stoddard to the board, and completion of the sale of the remaining stake in Corebridge Financial. Multiple analyst notes from recent periods highlight strong earnings momentum, underwriting gains, cost efficiencies, and continued dividend appeal.
+Financials show AIG reporting robust Q1 2026 results with earnings per share of $2.11, exceeding estimates and reflecting year-over-year growth of 80 percent driven by improved accident-year combined ratios and lower expenses. Profit margins stand at 11.84 percent, EBITDA margins at 31.15 percent, and return on equity at 7.72 percent, supported by free cash flow of approximately 9.52 billion USD alongside total revenue of 26.70 billion USD.
+Valuations reflect a trailing price-to-earnings ratio of 14.30 and a forward ratio of 9.16, with a price-to-book ratio of 1.07 and PEG ratio near 0.65. The firm trades at a market capitalization of 43.08 billion USD, supported by a dividend yield of 2.48 percent and an analyst consensus mean target price of 87.95 USD against the recent trading range near 81 USD, with a buy-oriented recommendation mean of 2.36.
+Economic outlook affecting the firm centers on elevated volatility through July and into early October 2026, including key CPI releases, FOMC decisions under Chair Warsh,Sticky inflation pressures from tariffs and geopolitical oil risks, alongside market rotation toward domestic and value-oriented sectors that could support insurance fundamentals amid resilient but moderating growth.
+Score: 78
+
+---
+
+Ticker: AMT | Company: American Tower Corporation | Score: 78
+Investment Report:
+Recent news highlights American Tower Corporation&#x27;s positioning within equity REITs as a beneficiary of accelerating fundamentals in data centers and communications infrastructure, driven by AI demand and supply constraints. Multiple analyses affirm the firm&#x27;s high-quality portfolio, steady revenue expansion at 6.8% year-over-year in the prior quarter, and guidance for sustained property revenue and adjusted FFO growth in 2026. Earnings are slated for release on July 28 alongside a conference call, while sustainability reporting underscores operational resilience. Sector commentary notes REIT outperformance potential amid quality bifurcation and M&amp;A activity.
+Financials indicate trailing twelve-month revenue of $10.82 billion with gross margins at 73.96% and EBITDA margins at 64.60%. Return on equity stands at 29.95%, supported by operating cash flow of $5.57 billion and free cash flow of $4.61 billion. Debt levels remain elevated at $45.13 billion against a market capitalization of $77.11 billion, with shares outstanding near 465.89 million. Dividend metrics reflect an annual rate of $6.98 and a payout ratio of 82.26%.
+Valuations show a trailing price-to-earnings ratio of 26.74 and a forward ratio of 24.07, alongside a price-to-sales ratio of 7.13 and price-to-book of 21.90. Enterprise value to EBITDA reaches 17.98, while the current share price near 165 trades below the 50-day and 200-day moving averages. Analyst consensus maintains a buy rating with a mean target price of 216.82 across 22 opinions, implying upside from current levels.
+Economic outlook affecting the firm centers on elevated volatility from July CPI and FOMC meetings, sticky inflation from tariffs and geopolitical factors, and a cautious Federal Reserve stance. Market rotation toward small caps and domestic themes aligns with the firm&#x27;s data center exposure, while broader REIT commentary points to 6-7% earnings growth outpacing historical averages amid resilient private demand.
+Score: 78
+
+---
+
+Ticker: AMP | Company: Ameriprise Financial, Inc. | Score: 78
+Investment Report:
+Recent News
+Ameriprise Financial has received multiple positive mentions in analyst coverage highlighting strong momentum and value characteristics, alongside recognition as one of the most trustworthy companies in America 2026. The firm plans to release second-quarter results on July 23 and has earned technology innovation awards for its wealth management programs. Recent advisor team additions have expanded client assets under management while earnings commentary has addressed AI-related cash optimization concerns as overdone given the diversified business model.
+Financials
+Latest results reflect earnings per share growth of 0.66 year-over-year, revenue expansion of 0.09, and net income to common stockholders at 3.895 billion. Profit margins stand at 0.20165 with return on equity at 0.66936 and operating cash flow reaching 7.096 billion. Recurring revenues from advice and wealth management remain robust at record assets under management near 1.7 trillion, supported by margin expansion of 150 basis points and advisor productivity gains.
+Valuations
+Trailing price-to-earnings ratio registers at 12.6213 with forward ratio at 10.5101, below the five-year average and sector peers. Price-to-book stands at 7.34647 while PEG ratio equals 1.64 and dividend yield reaches 1.34 percent. Market capitalization is 45.5 billion against enterprise value of 40.6 billion, with shares trading near the 50-day moving average and below the 52-week high of 550.18.
+Economic Outlook Affecting the Firm
+July data releases including CPI and the FOMC meeting introduce elevated volatility amid persistent tariff effects and geopolitical oil risks that could keep inflation sticky. The cautious approach under the new Fed chair supports a higher-for-longer rate stance, which may sustain cash sweep revenue for asset managers, while market rotation toward small caps and domestic themes could broaden participation beyond large technology holdings. Earnings scrutiny around AI spending sustainability and hyperscaler margins may influence broader sentiment, yet Ameriprise&#x27;s fee-based model offers resilience through AUM growth.
+Score: 78
+
+---
+
+Ticker: APH | Company: Amphenol Corporation | Score: 78
+Investment Report:
+Recent news for Amphenol Corporation highlights continued momentum from its Communications Solutions segment, which benefits from AI datacom demand and acquisition-driven portfolio expansion. Multiple reports note record orders, defense sales growth of 44 percent year over year, and positioning within AI data center infrastructure, including fiber optics and connectivity products. Coverage also references attempts at breakout from recent bases amid strong relative strength, though some commentary questions sustainability if broader AI spending cools.
+Financials indicate robust performance with quarterly earnings growth of 26.5 percent and revenue growth of 58.4 percent. Profit margins stand at 17.2 percent, EBITDA margins at 31.5 percent, and operating margins at 27.3 percent. Return on equity reaches 36.8 percent while free cash flow totals 3.56 billion. Debt-to-equity registers at 133.05 and current ratio at 1.71, reflecting solid liquidity alongside total debt of 18.75 billion.
+Valuations show a trailing price-to-earnings ratio of 45.41 and forward ratio of 27.68, with PEG at 1.41. Price-to-sales equals 7.53 and price-to-book 13.94. The stock trades near its 52-week high of 178.52 after a daily range of 156.24 to 163.33, with market capitalization at 194.96 billion. Analyst consensus maintains a buy rating with mean target of 184.
+Economic outlook affecting the firm centers on mixed signals from upcoming July CPI and FOMC decisions amid tariff persistence and geopolitical oil risks that could sustain inflation pressures. Tech and AI enthusiasm shows signs of cooling with market rotation toward small caps and value themes, yet Amphenol maintains exposure through diversified defense and industrial segments that may offset potential data center capex moderation in the near term.
+Score: 78
+
+---
+
+Ticker: AON | Company: Aon plc | Score: 78
+Investment Report:
+Aon plc operates in the insurance brokers industry with a position shaped by recent operational and strategic developments. Recent news highlights Aon’s first-quarter 2026 earnings beat driven by risk capital growth and margin expansion alongside initiatives such as the global rollout of Claims Copilot and the planned 2026 launch of the Aon Digital Placement Exchange platform to enhance risk syndication and analytics. Leadership appointments in EMEA and Latin America support the firm’s Aon United strategy, while studies on human capital trends for AI underscore expanding client advisory services. Financials reflect total revenue of 17.49 billion USD with 6 percent total and 5 percent organic growth, net income to common stockholders of 3.94 billion USD, return on equity of 46.45 percent, and free cash flow of 3.34 billion USD. Quarterly earnings reached 6.48 USD per share against estimates of 6.33 USD, with earnings growth of 27.1 percent. Valuations indicate a trailing price-to-earnings ratio of 19.78, forward price-to-earnings of 16.85, price-to-book of 7.82, and enterprise value to EBITDA of 15.50, alongside a mean analyst target price of 383.32 against the recent closing level near 357. The economic outlook affecting the firm features elevated volatility from upcoming CPI releases, FOMC decisions, geopolitical tensions that may increase demand for risk management products, and tariff-related inflation pressures that support insurance brokerage activity amid broader market rotation. 
+Score: 78
+However, we can also invest in most ETFs (except short, leveraged, or vol because of the monthly horizon), including but not limited to market, sectors, TIPS, and long and short-term bonds. You decide the weights do not have to include any or all of the stocks or instruments mentioned. Remember, a 15-asset portfolio where we will invest for the next month (rebalancing in one month) in a table with weight, instrument type, thesis, edge, and risk. You can use both the stock info and your macro expectations, as well as reasoning about the future and markets.</pre>
+      <h4>Output — 15-asset portfolio table</h4>
+      <pre id="port-out" class="sample output">**15-Asset Portfolio for Next Month (Rebalance July/August 2026)**
+
+**Macro Backdrop &amp; Positioning**: Persistent inflation/tariffs, geopolitical oil risks, cautious Fed (higher-for-longer), and equity rotation out of large-cap tech into defensives, value retail, data-center infrastructure, healthcare, and defense favor a barbell of high-quality defensives + selective AI-adjacent industrials. This mix targets positive absolute returns and S&amp;P 500 outperformance via sector beta &gt;1 in favored areas, valuation support, and earnings momentum.
+
+```markdown
+| Weight | Instrument     | Type | Thesis                                      | Edge                                      | Risk                                      |
+|--------|----------------|------|---------------------------------------------|-------------------------------------------|-------------------------------------------|
+| 8%    | TJX           | Stock | Off-price retail resilience amid sticky inflation &amp; consumer pressure | Multiple earnings beats, 177 analyst target, value rotation | Consumer slowdown, margin compression     |
+| 7%    | ROST          | Stock | Value apparel demand + store expansion     | 37% EPS growth, 256 target, traffic gains  | Same as above + inventory risk            |
+| 8%    | XLU           | ETF  | Regulated utilities + data-center load growth | Low-beta defensive, dividend support       | Rate sensitivity, regulatory lag          |
+| 6%    | AEP           | Stock | Data-center power demand + capex plan      | Raised 78B plan, buy rating, 145 target    | Capex overruns, regulatory               |
+| 7%    | XLV           | ETF  | Broad healthcare stability &amp; pipeline      | Defensive rotation, low volatility         | Policy/rebate risk, M&amp;A integration       |
+| 6%    | CAH           | Stock | Specialty distribution + defensive profile | 11% rev growth, 246 target, low beta       | Reimbursement pressure                    |
+| 7%    | LLY           | Stock | GLP-1 momentum + Medicare expansion        | Record highs, oral pipeline, buy rating    | Competition, pricing scrutiny             |
+| 5%    | ABBV          | Stock | Immunology pipeline &amp; regulatory wins      | Skyrizi/Rinvoq growth, 2.7% yield          | Patent cliff, integration risk            |
+| 7%    | ITA           | ETF  | Aerospace/defense backlog &amp; NATO spend     | Geopolitical tailwinds, sector rotation    | Budget delays, program risk               |
+| 7%    | NOC           | Stock | Surveillance &amp; missile programs            | 95B+ backlog, 84% earnings growth          | Contract timing, cost inflation           |
+| 6%    | RTX           | Stock | Missile &amp; engine demand                    | NATO contracts, 8.7% rev growth            | Supply-chain, Pratt Whitney exposure      |
+| 5%    | HWM           | Stock | Defense + commercial aftermarket           | 19% rev growth, 68% EPS beat               | Cyclical exposure                         |
+| 6%    | EME           | Stock | Electrical/data-center construction        | Record 15.6B backlog, Strong Buy           | Labor/cost inflation, backlog conversion  |
+| 6%    | WM            | Stock | Waste pricing power + renewables           | Defensive cash flows, 10.99% margins       | Volume weakness, fuel costs               |
+| 8%    | IWM           | ETF  | Small-cap/domestic rotation                | Broad participation beyond mega-cap tech   | Liquidity, rate sensitivity               |
+```
+
+**Weighting Rationale**: 47% dedicated healthcare/utilities (lowest beta), 25% defense/aerospace (geopolitical hedge), 15% value retail (inflation hedge), 13% infrastructure/industrials (AI data-center growth). Overweights relative to S&amp;P sector weights enable alpha from the ongoing rotation while maintaining diversification. Expected outcome: positive total return with modest outperformance vs. S&amp;P 500 driven by earnings resilience and sector leadership.</pre>
+    </section>
+
+    <section id="storage" class="slide">
+      <h2>Run Storage &amp; UI</h2>
+      <p class="subtitle">How results are persisted and viewed</p>
+      <ul>
+        <li>Each run saves to <code>runs/YYYY-MM/YYYY-MM-DD_HHMMSS/run.json</code></li>
+        <li>Contains: settings (keys redacted), macro inputs, macro report, all firm reports/scores, top30 array, portfolio text, cost</li>
+        <li>Dashboard tabs: Run (live SSE progress), Results, History, Settings</li>
+        <li>API keys: xAI/OpenRouter + Stock News API in Settings or <code>.env</code></li>
+      </ul>
+      <h3>Typical full-run cost</h3>
+      <p>~503 firm calls + 1 macro + 1 allocation ≈ 505 Grok calls. Sample run scored 500 firms and completed in ~75 minutes.</p>
+    </section>
+
+    <footer>Gecko PM presentation · Generated from run 2026-07-07_184747 · Open <code>static/how-it-works.html</code> in a browser</footer>
+  </div>
+  <script>
+    function expandPre(btn, id) {
+      const el = document.getElementById(id);
+      if (el.style.maxHeight === 'none') {
+        el.style.maxHeight = '520px';
+        btn.textContent = btn.textContent.replace('Collapse', 'Expand');
+      } else {
+        el.style.maxHeight = 'none';
+        btn.textContent = btn.textContent.replace('Expand', 'Collapse');
+      }
+    }
+  </script>
+</body>
+</html>

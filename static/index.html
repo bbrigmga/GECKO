@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Gecko PM</title>
-  <link rel="icon" href="/favicon.ico" type="image/png" sizes="32x32" />
+  <link rel="icon" href="/favicon.ico" type="image/x-icon" sizes="any" />
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
@@ -30,6 +30,7 @@
         <div class="run-actions">
           <button id="btn-run" class="btn btn-primary btn-lg">Run Monthly Analysis</button>
           <button id="btn-resume" class="btn btn-secondary btn-lg" hidden>Resume Interrupted Run</button>
+          <button id="btn-portfolio" class="btn btn-secondary btn-lg">Rerun Portfolio Only</button>
           <button id="btn-cancel" class="btn btn-danger" disabled>Cancel</button>
         </div>
       </div>
@@ -53,6 +54,7 @@
         <p>No results yet. Run the monthly analysis or load a run from History.</p>
       </div>
       <div id="results-content" hidden>
+        <p id="results-run-label" class="results-run-label" hidden></p>
         <div class="card">
           <div class="card-header">
             <h2>15-Asset Portfolio</h2>
@@ -91,6 +93,7 @@
     <section id="tab-history" class="panel">
       <div class="card">
         <h2>Run History</h2>
+        <p class="field-hint">Star runs to pin them to the top of this list.</p>
         <div id="history-list" class="history-list"></div>
       </div>
     </section>
@@ -117,12 +120,16 @@
           </label>
           <label>
             Grok Model
-            <input type="text" id="model" value="grok-4.3" />
-            <span id="model-hint" class="field-hint">xAI: grok-4.3 · OpenRouter: x-ai/grok-4.3</span>
+            <select id="model">
+              <option value="grok-4.3">grok-4.3</option>
+              <option value="grok-4.5">grok-4.5</option>
+            </select>
+            <span id="model-hint" class="field-hint">OpenRouter uses x-ai/ prefix automatically</span>
           </label>
           <label>
             Max Tickers (0 = full S&P 500)
             <input type="number" id="max-tickers" min="0" value="0" />
+            <span class="field-hint">Truncates to the largest market-cap names first, not alphabetical</span>
           </label>
           <label>
             Concurrency
@@ -139,6 +146,7 @@
             <span class="field-hint">1 API call at the start of each run</span>
           </label>
           <button type="submit" class="btn btn-primary">Save Settings</button>
+          <p id="settings-saved-summary" class="field-hint"></p>
           <p id="settings-status" class="hint"></p>
         </form>
       </div>

@@ -210,7 +210,12 @@ tr:hover td { background: var(--surface2); }
   color: var(--muted);
 }
 
-.history-list { display: flex; flex-direction: column; gap: 0.75rem; }
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
 
 .history-item {
   display: flex;
@@ -224,6 +229,40 @@ tr:hover td { background: var(--surface2); }
   flex-wrap: wrap;
 }
 
+.history-item.favorited {
+  border-color: color-mix(in srgb, var(--warning) 45%, var(--border));
+}
+
+.btn-star {
+  flex-shrink: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.btn-star:hover:not(:disabled) {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 50%, var(--border));
+  background: color-mix(in srgb, var(--warning) 10%, transparent);
+}
+
+.btn-star.is-favorite {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 50%, var(--border));
+}
+
+.btn-star:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .history-meta { flex: 1; min-width: 200px; }
 .history-meta h4 { font-size: 0.95rem; }
 .history-meta p { font-size: 0.8rem; color: var(--muted); margin-top: 0.25rem; }
@@ -234,6 +273,18 @@ tr:hover td { background: var(--surface2); }
   margin-top: 0.35rem;
   max-width: 640px;
   white-space: pre-wrap;
+}
+
+.history-mode {
+  font-size: 0.78rem;
+  color: var(--accent);
+  margin-top: 0.25rem;
+}
+
+.results-run-label {
+  font-size: 0.85rem;
+  color: var(--accent);
+  margin: 0 0 1rem;
 }
 
 .status-badge {

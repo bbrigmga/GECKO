@@ -59,7 +59,7 @@ def _mask_settings(s: Settings) -> SettingsResponse:
 
 @app.get("/favicon.ico")
 async def favicon() -> FileResponse:
-    return FileResponse(STATIC / "favicon.png", media_type="image/png")
+    return FileResponse(STATIC / "favicon.ico", media_type="image/x-icon")
 
 
 @app.get("/")
@@ -101,12 +101,47 @@ async def status() -> dict[str, Any]:
 async def start_run(resume: bool = False) -> dict[str, Any]:
     if runner.is_running:
         raise HTTPException(status_code=409, detail="A run is already in progress")
+    resume_id: str | None = None
+    already_scored = 0
+    pending = 0
+    total = 0
+    if resume:
+        resume_id = runner.find_resumable_run()
+        if not resume_id:
+            raise HTTPException(
+                status_code=400,
+                detail="No run available to resume (need partial progress without a portfolio)",
+            )
+        loaded = load_run(resume_id)
+        if loaded:
+            firms = loaded.get("firms") or {}
+            already_scored = sum(1 for f in firms.values() if f.get("score") is not None)
+            pending = sum(1 for f in firms.values() if f.get("score") is None)
+            total = int(loaded.get("universe_count") or len(firms) or 0)
     try:
-        resume_id = runner.find_resumable_run() if resume else None
         run_id = await runner.start(resume_run_id=resume_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"run_id": run_id, "resumed": resume_id is not None}
+    return {
+        "run_id": run_id,
+        "resumed": resume_id is not None,
+        "already_scored": already_scored,
+        "pending": pending,
+        "total": total,
+    }
+
+
+@app.post("/api/run/portfolio")
+async def start_portfolio_run(source_run_id: str | None = None) -> dict[str, Any]:
+    if runner.is_running:
+        raise HTTPException(status_code=409, detail="A run is already in progress")
+    try:
+        run_id, resolved_source, model = await runner.start_portfolio_only(
+            source_run_id=source_run_id
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"run_id": run_id, "source_run_id": resolved_source, "model": model}
 
 
 @app.post("/api/run/cancel")

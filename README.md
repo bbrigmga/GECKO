@@ -35,8 +35,8 @@ Then click **Run Monthly Analysis**.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| Model | `grok-4.3` | xAI model for all Grok calls |
-| Max Tickers | `0` | `0` = full S&P 500; set to e.g. `10` for cheap test runs |
+| Model | `grok-4.3` | Grok model for all LLM calls (`grok-4.3` or `grok-4.5`; OpenRouter uses `x-ai/` prefix) |
+| Max Tickers | `0` | `0` = full S&P 500; otherwise keeps the N largest by market cap (not alphabetical) |
 | Concurrency | `8` | Parallel firm scoring requests |
 | News articles per ticker | `15` | Articles returned per ticker (max 50). **Does not change API call count** — still 1 call per ticker |
 | Macro news articles | `25` | Articles for general market news (1 API call per run) |

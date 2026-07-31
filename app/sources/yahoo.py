@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 import httpx
@@ -163,6 +164,70 @@ def get_company_name(info: dict[str, Any], ticker: str) -> str:
 
 def get_industry(info: dict[str, Any]) -> str:
     return info.get("industry") or info.get("sector") or "Unknown"
+
+
+def get_sector(info: dict[str, Any]) -> str:
+    return info.get("sector") or info.get("industry") or "Unknown"
+
+
+def _market_cap_for_ticker(ticker: str) -> float:
+    """Best-effort market cap lookup; 0.0 if unavailable."""
+    try:
+        t = yf.Ticker(ticker)
+        fast = getattr(t, "fast_info", None)
+        if fast is not None:
+            cap = None
+            if hasattr(fast, "get"):
+                cap = fast.get("market_cap") or fast.get("marketCap")
+            else:
+                cap = getattr(fast, "market_cap", None) or getattr(fast, "marketCap", None)
+            if cap is not None and float(cap) > 0:
+                return float(cap)
+        info = t.info or {}
+        cap = info.get("marketCap") or info.get("enterpriseValue")
+        if cap is not None and float(cap) > 0:
+            return float(cap)
+    except Exception:  # noqa: BLE001
+        pass
+    return 0.0
+
+
+def sort_tickers_by_market_cap(
+    tickers: list[dict[str, str]],
+    *,
+    workers: int = 16,
+) -> list[dict[str, str]]:
+    """Return tickers sorted by market cap descending (largest first).
+
+    Used so max_tickers truncates to the largest S&P names rather than
+    alphabetical order. Missing caps sort last.
+    """
+    if not tickers:
+        return []
+
+    caps: dict[str, float] = {}
+
+    def fetch_one(entry: dict[str, str]) -> tuple[str, float]:
+        symbol = entry["ticker"]
+        return symbol, _market_cap_for_ticker(symbol)
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(fetch_one, e) for e in tickers]
+        for fut in as_completed(futures):
+            symbol, cap = fut.result()
+            caps[symbol] = cap
+
+    enriched: list[dict[str, str]] = []
+    for entry in tickers:
+        row = dict(entry)
+        row["market_cap"] = str(int(caps.get(entry["ticker"], 0.0)))
+        enriched.append(row)
+
+    enriched.sort(
+        key=lambda e: float(e.get("market_cap") or 0.0),
+        reverse=True,
+    )
+    return enriched
 
 
 def fetch_sp500_tickers() -> list[dict[str, str]]:
