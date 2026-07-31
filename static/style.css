@@ -30,8 +30,39 @@ body {
   background: var(--surface);
 }
 
+.header-top {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 72px;
+}
+
 .brand h1 { font-size: 1.5rem; font-weight: 700; }
 .subtitle { color: var(--muted); font-size: 0.9rem; margin-top: 0.25rem; }
+
+.header-logo-link {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  border-radius: 8px;
+  transition: opacity 0.15s;
+}
+
+.header-logo-link:hover { opacity: 0.85; }
+
+.header-logo {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  display: block;
+}
 
 .tabs {
   display: flex;
@@ -410,4 +441,16 @@ tr:hover td { background: var(--surface2); }
 @media (max-width: 640px) {
   .header, main { padding-left: 1rem; padding-right: 1rem; }
   .tabs { flex-wrap: wrap; }
+  .header-top {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    min-height: 0;
+  }
+  .header-logo-link {
+    position: static;
+    transform: none;
+    order: -1;
+    margin-bottom: 0.5rem;
+  }
 }
