@@ -1,4 +1,4 @@
-"""FastAPI application — Gecko PM."""
+"""FastAPI application — Grok PM."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from app.pipeline import list_runs, load_run, runner, _redact_run
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "static"
 
-app = FastAPI(title="Gecko PM", version="1.0.0")
+app = FastAPI(title="Grok PM", version="1.0.0")
 app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
 
 
@@ -59,12 +59,19 @@ def _mask_settings(s: Settings) -> SettingsResponse:
 
 @app.get("/favicon.ico")
 async def favicon() -> FileResponse:
-    return FileResponse(STATIC / "favicon.ico", media_type="image/x-icon")
+    return FileResponse(
+        STATIC / "favicon.ico",
+        media_type="image/x-icon",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 @app.get("/")
 async def index() -> FileResponse:
-    return FileResponse(STATIC / "index.html")
+    return FileResponse(
+        STATIC / "index.html",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 @app.get("/api/settings", response_model=SettingsResponse)

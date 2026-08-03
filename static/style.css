@@ -108,6 +108,12 @@ main { max-width: 1200px; margin: 0 auto; padding: 1.5rem 2rem 3rem; }
 
 .card-header h2 { margin-bottom: 0; }
 
+.export-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
 .hero-card { text-align: center; padding: 2.5rem; }
 .hero-card h2 { font-size: 1.75rem; margin-bottom: 0.5rem; }
 .hero-card p { color: var(--muted); margin-bottom: 1.5rem; }

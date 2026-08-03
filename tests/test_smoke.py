@@ -214,7 +214,7 @@ def test_fastapi_app() -> None:
     client = TestClient(app)
     r = client.get("/")
     assert r.status_code == 200
-    assert "Gecko PM" in r.text
+    assert "Grok PM" in r.text
 
     r = client.get("/api/settings")
     assert r.status_code == 200

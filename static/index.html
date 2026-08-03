@@ -3,19 +3,19 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Gecko PM</title>
-  <link rel="icon" href="/favicon.ico" type="image/x-icon" sizes="any" />
+  <title>Grok PM</title>
+  <link rel="icon" href="/favicon.ico?v=2" type="image/x-icon" sizes="any" />
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
   <header class="header">
     <div class="header-top">
       <div class="brand">
-        <h1>Gecko PM</h1>
+        <h1>Grok PM</h1>
         <p class="subtitle">Monthly AI-driven portfolio analysis — white paper pipeline</p>
       </div>
       <a class="header-logo-link" href="/static/how-it-works.html" title="How it works">
-        <img class="header-logo" src="/static/grok-logo.png" alt="How Gecko PM works" width="72" height="72" />
+        <img class="header-logo" src="/static/grok-logo.png" alt="How Grok PM works" width="72" height="72" />
       </a>
     </div>
     <nav class="tabs" role="tablist">
@@ -63,9 +63,14 @@
         <div class="card">
           <div class="card-header">
             <h2>15-Asset Portfolio</h2>
-            <button type="button" id="btn-export-portfolio" class="btn btn-secondary" hidden>
-              Export to Excel
-            </button>
+            <div class="export-actions">
+              <button type="button" id="btn-export-portfolio" class="btn btn-secondary" hidden>
+                Export to Excel
+              </button>
+              <button type="button" id="btn-export-pdf" class="btn btn-secondary" hidden>
+                Export PDF
+              </button>
+            </div>
           </div>
           <div id="portfolio-output" class="markdown-body"></div>
         </div>
@@ -166,6 +171,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=pdf3"></script>
 </body>
 </html>

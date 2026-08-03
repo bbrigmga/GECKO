@@ -1,4 +1,4 @@
-/** Gecko PM — frontend */
+/** Grok PM — frontend */
 
 let currentRun = null;
 let eventSource = null;
@@ -330,18 +330,19 @@ document.querySelectorAll("#scores-table th[data-sort]").forEach((th) => {
   });
 });
 
+function parseMarkdownTableRow(line) {
+  return line
+    .split("|")
+    .slice(1, -1)
+    .map((cell) => cell.trim());
+}
+
 function parsePortfolioTable(text) {
   if (!text) return [];
   const lines = text.split("\n").filter((line) => line.trim().startsWith("|"));
   if (lines.length < 2) return [];
 
-  const parseRow = (line) =>
-    line
-      .split("|")
-      .slice(1, -1)
-      .map((cell) => cell.trim());
-
-  const headers = parseRow(lines[0]).map((h) => h.toLowerCase());
+  const headers = parseMarkdownTableRow(lines[0]).map((h) => h.toLowerCase());
   const weightIdx = headers.findIndex((h) => h.includes("weight"));
   const instrumentIdx = headers.findIndex(
     (h) => h.includes("instrument") || h === "ticker" || h === "symbol"
@@ -350,7 +351,7 @@ function parsePortfolioTable(text) {
 
   const rows = [];
   for (let i = 1; i < lines.length; i++) {
-    const cells = parseRow(lines[i]);
+    const cells = parseMarkdownTableRow(lines[i]);
     if (!cells.length || cells.every((c) => /^[-:\s]+$/.test(c))) continue;
 
     const weight = (weightIdx >= 0 ? cells[weightIdx] : cells[0]) || "";
@@ -365,6 +366,81 @@ function parsePortfolioTable(text) {
     });
   }
   return rows;
+}
+
+function stripMdInline(text) {
+  return String(text || "")
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/__(.*?)__/g, "$1")
+    .replace(/`(.*?)`/g, "$1")
+    .trim();
+}
+
+/** Split portfolio markdown into Word-doc-like sections. */
+function parsePortfolioReport(text) {
+  const raw = String(text || "").replace(/\r\n/g, "\n").trim();
+  if (!raw) {
+    return { title: "15-Asset Portfolio", intro: "", holdings: [], rationale: "" };
+  }
+
+  const lines = raw.split("\n");
+  const tableStart = lines.findIndex((line) => line.trim().startsWith("|"));
+  const before = (tableStart >= 0 ? lines.slice(0, tableStart) : lines).join("\n").trim();
+  let after = "";
+  const holdings = [];
+
+  if (tableStart >= 0) {
+    const tableLines = [];
+    let i = tableStart;
+    for (; i < lines.length; i++) {
+      if (!lines[i].trim().startsWith("|")) break;
+      tableLines.push(lines[i]);
+    }
+    after = lines.slice(i).join("\n").trim();
+
+    if (tableLines.length >= 2) {
+      const headers = parseMarkdownTableRow(tableLines[0]).map((h) => h.toLowerCase());
+      const idx = (names) => headers.findIndex((h) => names.some((n) => h.includes(n)));
+      const weightIdx = idx(["weight"]);
+      const instrumentIdx = idx(["instrument", "ticker", "symbol"]);
+      const typeIdx = idx(["type"]);
+      const thesisIdx = idx(["thesis"]);
+      const edgeIdx = idx(["edge"]);
+      const riskIdx = idx(["risk"]);
+
+      for (let r = 1; r < tableLines.length; r++) {
+        const cells = parseMarkdownTableRow(tableLines[r]);
+        if (!cells.length || cells.every((c) => /^[-:\s]+$/.test(c))) continue;
+        const instrument = (instrumentIdx >= 0 ? cells[instrumentIdx] : cells[1]) || "";
+        if (!instrument || instrument.toLowerCase() === "instrument") continue;
+        holdings.push({
+          weight: (weightIdx >= 0 ? cells[weightIdx] : cells[0]) || "",
+          instrument: instrument.toUpperCase(),
+          type: typeIdx >= 0 ? cells[typeIdx] || "" : "",
+          thesis: thesisIdx >= 0 ? cells[thesisIdx] || "" : "",
+          edge: edgeIdx >= 0 ? cells[edgeIdx] || "" : "",
+          risk: riskIdx >= 0 ? cells[riskIdx] || "" : "",
+        });
+      }
+    }
+  }
+
+  const beforeLines = before.split("\n").map((l) => l.trim()).filter(Boolean);
+  let title = "15-Asset Portfolio";
+  let introStart = 0;
+  if (beforeLines.length) {
+    title = stripMdInline(beforeLines[0]);
+    introStart = 1;
+  }
+  const intro = beforeLines.slice(introStart).map(stripMdInline).join("\n\n");
+  const rationale = after
+    .split("\n")
+    .map((l) => stripMdInline(l.replace(/^[-*]\s+/, "• ")))
+    .filter(Boolean)
+    .filter((l) => !/^construction rationale/i.test(l))
+    .join("\n");
+
+  return { title, intro, holdings, rationale };
 }
 
 function firmNameForTicker(ticker, stateOrFirms) {
@@ -426,6 +502,149 @@ function exportPortfolioToExcel() {
   ], rows);
 }
 
+function paragraphsToHtml(text) {
+  return String(text || "")
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .map((block) => {
+      const lines = block.split("\n").map((l) => esc(l)).join("<br>");
+      return `<p>${lines}</p>`;
+    })
+    .join("\n");
+}
+
+function exportPortfolioReportPdf() {
+  if (!currentResultsState?.portfolio) {
+    alert("No portfolio to export.");
+    return;
+  }
+
+  const report = parsePortfolioReport(currentResultsState.portfolio);
+  if (!report.holdings.length) {
+    alert("Could not find a portfolio table in the results.");
+    return;
+  }
+
+  const runId = currentResultsState.run_id || "portfolio";
+  const holdingsHtml = report.holdings
+    .map(
+      (row) => `<tr>
+      <td>${esc(row.weight)}</td>
+      <td><strong>${esc(row.instrument)}</strong></td>
+      <td>${esc(row.type)}</td>
+      <td>${esc(row.thesis)}</td>
+      <td>${esc(row.edge)}</td>
+      <td>${esc(row.risk)}</td>
+    </tr>`
+    )
+    .join("\n");
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>${esc(runId)}_portfolio_report</title>
+  <style>
+    @page { size: landscape; margin: 0.35in; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Calibri", "Segoe UI", Arial, sans-serif;
+      color: #1a1a1a;
+      font-size: 8pt;
+      line-height: 1.2;
+      margin: 0;
+      padding: 0.2in;
+    }
+    h1 {
+      font-size: 14pt;
+      margin: 0 0 0.05em;
+      font-weight: 700;
+    }
+    .subtitle {
+      font-size: 9pt;
+      color: #333;
+      margin: 0 0 0.35em;
+    }
+    .meta {
+      font-size: 7.5pt;
+      color: #666;
+      margin-bottom: 0.4em;
+    }
+    h2 {
+      font-size: 9.5pt;
+      margin: 0.55em 0 0.2em;
+      border-bottom: 1px solid #ccc;
+      padding-bottom: 0.1em;
+    }
+    p { margin: 0 0 0.35em; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0.3em 0 0.45em;
+      font-size: 6.5pt;
+      line-height: 1.15;
+    }
+    th, td {
+      border: 1px solid #bbb;
+      padding: 2px 4px;
+      vertical-align: top;
+      text-align: left;
+    }
+    th {
+      background: #f0f0f0;
+      font-weight: 700;
+    }
+    td:nth-child(1) { white-space: nowrap; width: 3.5em; }
+    td:nth-child(2) { white-space: nowrap; width: 4.5em; }
+    td:nth-child(3) { white-space: nowrap; width: 3.5em; }
+    .no-print { margin: 0 0 1em; }
+    @media print {
+      .no-print { display: none !important; }
+      body { padding: 0; }
+    }
+  </style>
+</head>
+<body>
+  <p class="no-print">Use your browser’s print dialog → <strong>Save as PDF</strong>.</p>
+  <h1>15-Asset Portfolio</h1>
+  <p class="subtitle">${esc(report.title)}</p>
+  <p class="meta">Run ${esc(runId)}</p>
+  ${paragraphsToHtml(report.intro)}
+  <table>
+    <thead>
+      <tr>
+        <th>Weight</th>
+        <th>Instrument</th>
+        <th>Type</th>
+        <th>Thesis</th>
+        <th>Edge</th>
+        <th>Risk</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${holdingsHtml}
+    </tbody>
+  </table>
+  ${report.rationale ? `<h2>Construction rationale (regime fit)</h2>${paragraphsToHtml(report.rationale)}` : ""}
+</body>
+</html>`;
+
+  const win = window.open("", "_blank");
+  if (!win) {
+    alert("Pop-up blocked. Allow pop-ups for this site to export the PDF report.");
+    return;
+  }
+  win.document.open();
+  win.document.write(html);
+  win.document.close();
+  // ponytail: browser print→PDF; avoid PDF libs until we need server-side files
+  setTimeout(() => {
+    win.focus();
+    win.print();
+  }, 250);
+}
+
 function runModeLabel(state) {
   if (state.mode !== "portfolio_only") return "";
   const source = state.source_run_id ? ` from ${state.source_run_id}` : "";
@@ -454,13 +673,17 @@ function showResults(state) {
       : Object.values(state.firms || {}).filter((f) => f.score != null);
   firmsData.sort((a, b) => b.score - a.score);
   document.getElementById("scores-count").textContent = firmsData.length;
-  const exportBtn = document.getElementById("btn-export-portfolio");
-  exportBtn.hidden = !parsePortfolioTable(state.portfolio || "").length;
+  const hasPortfolio = !!parsePortfolioTable(state.portfolio || "").length;
+  const excelBtn = document.getElementById("btn-export-portfolio");
+  const pdfBtn = document.getElementById("btn-export-pdf");
+  if (excelBtn) excelBtn.hidden = !hasPortfolio;
+  if (pdfBtn) pdfBtn.hidden = !hasPortfolio;
   renderScoresTable();
   document.querySelector('.tab[data-tab="results"]').click();
 }
 
 document.getElementById("btn-export-portfolio").addEventListener("click", exportPortfolioToExcel);
+document.getElementById("btn-export-pdf").addEventListener("click", exportPortfolioReportPdf);
 
 // --- History favorites ---
 const FAVORITES_KEY = "gecko-favorite-runs";
