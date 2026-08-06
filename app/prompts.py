@@ -185,3 +185,72 @@ def allocation_prompt(macro_report: str, top_reports: str) -> str:
         "next month (rebalancing in one month) in a table with weight, instrument "
         "type, thesis, edge, and risk."
     )
+
+
+def compliance_allocation_prompt(
+    macro_report: str,
+    top_reports: str,
+    *,
+    min_market_cap_usd: int,
+    candidate_tickers: list[str],
+) -> str:
+    """Allocation prompt for employer compliance mode (large-cap stocks + plain ETFs)."""
+    macro = (macro_report or "").strip() or "(No macro report available.)"
+    cap_b = min_market_cap_usd / 1_000_000_000
+    ticker_list = ", ".join(candidate_tickers) if candidate_tickers else "(none)"
+    return (
+        "Now, I want a 15-asset portfolio where we will invest for the next month "
+        "(rebalancing in one month) in a table with weight, instrument type, "
+        "thesis, edge, and risk. Weight this portfolio to perform positively "
+        "given the market conditions and to beat the S&P 500.\n\n"
+        "COMPLIANCE CONSTRAINTS (mandatory):\n"
+        f"- Individual stocks must be chosen ONLY from this closed candidate list "
+        f"(each has market cap >= ${cap_b:.0f}B on latest available data): "
+        f"{ticker_list}\n"
+        "- You may also add ordinary long-only, unleveraged ETFs (broad market, "
+        "sector, bond, TIPS, etc.) for regime positioning.\n"
+        "- Do NOT use inverse, leveraged, volatility, or short ETFs.\n"
+        "- ETF allocation and weights are entirely your choice — no minimum ETF "
+        "weight is required.\n"
+        "- Do not include any stock outside the candidate list.\n\n"
+        "Here is the macroeconomic forecast and context to use for regime, "
+        "sector tilt, and ETF decisions:\n"
+        f"{macro}\n\n"
+        "We have firm-level reports for the highest-scoring eligible large-cap "
+        "stocks (stand-alone quality — financials, valuation, momentum, company "
+        "news — not macro fit). Use these for company-specific thesis, edge, and "
+        "name selection. Rely on the macro forecast above for market conditions:\n"
+        f"{top_reports}\n\n"
+        "Use the macro forecast for regime positioning and the firm reports for "
+        "security selection. You may underweight or omit names that do not fit "
+        "the regime. Remember, a 15-asset portfolio in a table with weight, "
+        "instrument type, thesis, edge, and risk."
+    )
+
+
+def allocation_correction_prompt(
+    original_portfolio: str,
+    issues: list[str],
+    *,
+    candidate_tickers: list[str],
+) -> str:
+    """Ask Grok to fix compliance violations in a generated portfolio."""
+    ticker_list = ", ".join(candidate_tickers) if candidate_tickers else "(none)"
+    issue_block = "\n".join(f"- {issue}" for issue in issues)
+    return (
+        "The portfolio below violates employer compliance rules. Rewrite the full "
+        "15-asset portfolio table (weight, instrument type, thesis, edge, risk) "
+        "so every holding is compliant.\n\n"
+        "Rules:\n"
+        f"- Stocks must be ONLY from: {ticker_list}\n"
+        "- Other holdings must be ordinary long-only, unleveraged ETFs only.\n"
+        "- No inverse, leveraged, or volatility ETFs.\n"
+        "- Preserve the same overall investment thesis where possible.\n"
+        "- ETF weights are your choice; no minimum ETF allocation.\n\n"
+        "Violations to fix:\n"
+        f"{issue_block}\n\n"
+        "Original portfolio:\n"
+        f"{original_portfolio}\n\n"
+        "Output the corrected full portfolio (intro text plus table plus any "
+        "brief construction rationale)."
+    )

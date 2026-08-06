@@ -9,7 +9,7 @@ from typing import Any
 import httpx
 from openai import OpenAI
 
-from app.prompts import allocation_prompt, firm_prompt, macro_prompt
+from app.prompts import allocation_correction_prompt, allocation_prompt, firm_prompt, macro_prompt
 
 AVAILABLE_MODELS = ("grok-4.3", "grok-4.5")
 
@@ -225,7 +225,40 @@ class GrokClient:
             response = self._create_response(prompt, web_search=False)
             return self._to_result(response)
 
-    def generate_allocation(self, macro_report: str, top_reports: str) -> GrokResult:
-        prompt = allocation_prompt(macro_report, top_reports)
+    def generate_allocation(
+        self,
+        macro_report: str,
+        top_reports: str,
+        *,
+        compliance_mode: bool = False,
+        min_market_cap_usd: int = 0,
+        candidate_tickers: list[str] | None = None,
+    ) -> GrokResult:
+        if compliance_mode:
+            from app.prompts import compliance_allocation_prompt
+
+            prompt = compliance_allocation_prompt(
+                macro_report,
+                top_reports,
+                min_market_cap_usd=min_market_cap_usd,
+                candidate_tickers=candidate_tickers or [],
+            )
+        else:
+            prompt = allocation_prompt(macro_report, top_reports)
+        response = self._create_response(prompt)
+        return self._to_result(response)
+
+    def generate_allocation_correction(
+        self,
+        original_portfolio: str,
+        issues: list[str],
+        *,
+        candidate_tickers: list[str],
+    ) -> GrokResult:
+        prompt = allocation_correction_prompt(
+            original_portfolio,
+            issues,
+            candidate_tickers=candidate_tickers,
+        )
         response = self._create_response(prompt)
         return self._to_result(response)

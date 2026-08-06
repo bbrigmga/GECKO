@@ -31,6 +31,9 @@ class SettingsPayload(BaseModel):
     concurrency: int = Field(default=8, ge=1, le=32)
     stocknews_items_per_ticker: int = Field(default=15, ge=1, le=50)
     stocknews_macro_items: int = Field(default=25, ge=1, le=50)
+    compliance_mode: bool = False
+    compliance_min_market_cap_usd: int = Field(default=200_000_000_000, ge=0)
+    compliance_stock_candidate_count: int = Field(default=30, ge=1, le=100)
 
 
 class SettingsResponse(BaseModel):
@@ -42,6 +45,9 @@ class SettingsResponse(BaseModel):
     concurrency: int
     stocknews_items_per_ticker: int
     stocknews_macro_items: int
+    compliance_mode: bool
+    compliance_min_market_cap_usd: int
+    compliance_stock_candidate_count: int
 
 
 def _mask_settings(s: Settings) -> SettingsResponse:
@@ -54,6 +60,9 @@ def _mask_settings(s: Settings) -> SettingsResponse:
         concurrency=s.concurrency,
         stocknews_items_per_ticker=s.stocknews_items_per_ticker,
         stocknews_macro_items=s.stocknews_macro_items,
+        compliance_mode=s.compliance_mode,
+        compliance_min_market_cap_usd=s.compliance_min_market_cap_usd,
+        compliance_stock_candidate_count=s.compliance_stock_candidate_count,
     )
 
 
@@ -91,6 +100,9 @@ async def update_settings(payload: SettingsPayload) -> SettingsResponse:
         concurrency=payload.concurrency,
         stocknews_items_per_ticker=payload.stocknews_items_per_ticker,
         stocknews_macro_items=payload.stocknews_macro_items,
+        compliance_mode=payload.compliance_mode,
+        compliance_min_market_cap_usd=payload.compliance_min_market_cap_usd,
+        compliance_stock_candidate_count=payload.compliance_stock_candidate_count,
     )
     save_settings(settings)
     return _mask_settings(settings)

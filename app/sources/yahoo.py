@@ -170,6 +170,34 @@ def get_sector(info: dict[str, Any]) -> str:
     return info.get("sector") or info.get("industry") or "Unknown"
 
 
+def get_instrument_info(ticker: str) -> dict[str, Any]:
+    """Quote type, market cap, and display name for compliance checks."""
+    info = get_ticker_info(ticker)
+    quote_type = str(info.get("quoteType") or "").upper()
+    cap = info.get("marketCap")
+    if cap is None or (isinstance(cap, float) and cap != cap):
+        cap = _market_cap_for_ticker(ticker)
+    else:
+        cap = float(cap)
+    name = (
+        info.get("longName")
+        or info.get("shortName")
+        or info.get("displayName")
+        or ticker
+    )
+    return {
+        "ticker": ticker.upper(),
+        "quote_type": quote_type,
+        "market_cap": cap,
+        "name": str(name),
+    }
+
+
+def classify_instrument(ticker: str) -> dict[str, Any]:
+    """Alias for get_instrument_info (compliance module entry point)."""
+    return get_instrument_info(ticker)
+
+
 def _market_cap_for_ticker(ticker: str) -> float:
     """Best-effort market cap lookup; 0.0 if unavailable."""
     try:

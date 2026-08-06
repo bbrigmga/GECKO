@@ -141,8 +141,8 @@
   <div class="deck">
     <header class="hero">
       <h1>Grok PM</h1>
-      <p>A local web app that runs the monthly AI investment pipeline from <em>The Grok Portfolio White Paper</em>: macro analysis, S&amp;P 500 firm scoring, top-30 selection, and a 15-asset portfolio allocation.</p>
-      <span class="badge">Sample run: 2026-07-07_184747</span>
+      <p>A local web app that runs the monthly AI investment pipeline from <em>The Grok Portfolio White Paper</em>: macro analysis, firm-native S&amp;P 500 scoring, diversified candidate selection, and a 15-asset portfolio allocation (with optional employer compliance mode).</p>
+      <span class="badge">Sample exhibits: run 2026-07-07_184747 (older prompt shape)</span>
     </header>
 
     <nav class="toc">
@@ -150,20 +150,21 @@
       <a href="#sources">Data Sources</a>
       <a href="#pipeline">Pipeline Flow</a>
       <a href="#prompts">Prompts</a>
+      <a href="#compliance">Compliance</a>
       <a href="#firm-example">Firm Prompt (AMAT)</a>
       <a href="#portfolio-example">Portfolio Prompt</a>
-      <a href="#storage">Persistence</a>
+      <a href="#storage">Persistence &amp; UI</a>
     </nav>
 
     <section id="overview" class="slide">
       <h2>What is Grok PM?</h2>
       <p class="subtitle">Monthly portfolio research, automated end-to-end</p>
-      <p>Grok PM (moon-machine-lite) is a FastAPI web app you run locally. Click <strong>Run Monthly Analysis</strong> and it orchestrates data collection, three Grok LLM calls per pipeline stage, and saves checkpointed results to disk.</p>
+      <p>Grok PM (moon-machine-lite) is a FastAPI web app you run locally. Click <strong>Run Monthly Analysis</strong> and it orchestrates data collection, Grok LLM calls, and checkpointed results to disk. You can also <strong>Rerun Portfolio Only</strong> against a prior run’s scored firms without re-scoring the universe.</p>
       <div class="grid">
-        <div class="card"><strong>Macro report</strong><span>Grok synthesizes market news + Wikipedia + live web search into a 3-month economic outlook.</span></div>
-        <div class="card"><strong>Firm scoring</strong><span>Every S&amp;P 500 company gets a 1–100 score and investment report from Grok.</span></div>
-        <div class="card"><strong>Top 30</strong><span>Highest-scoring firms are ranked locally — no LLM call.</span></div>
-        <div class="card"><strong>Portfolio</strong><span>Grok builds a 15-asset monthly allocation with weights, thesis, edge, and risk.</span></div>
+        <div class="card"><strong>Macro report</strong><span>Grok synthesizes market news + Wikipedia + live web/X search into a 3-month economic outlook.</span></div>
+        <div class="card"><strong>Firm scoring</strong><span>Each S&amp;P 500 company gets a 1–100 stand-alone quality score (financials, valuation, momentum, news) — no macro bias at scoring time.</span></div>
+        <div class="card"><strong>Candidates</strong><span>Top 30 by score for the table; ~35 soft sector-diversified names (or compliance top-N) feed allocation.</span></div>
+        <div class="card"><strong>Portfolio</strong><span>Grok builds a 15-asset monthly allocation using the shared macro forecast + firm packets (weights, type, thesis, edge, risk).</span></div>
       </div>
       <h3>Tech stack</h3>
       <ul>
@@ -183,13 +184,15 @@
         </thead>
         <tbody>
           <tr><td>General market news (past ~7 days)</td><td><a href="https://stocknewsapi.com" style="color:var(--accent)">Stock News API</a></td><td>Macro context → macro report</td><td>1</td></tr>
-          <tr><td>Wikipedia current events + year pages</td><td>Wikimedia API</td><td>Macro context → macro report</td><td>~4 pages</td></tr>
+          <tr><td>Wikipedia year / US pages</td><td>Wikimedia API</td><td>Macro context → macro report</td><td>~3 pages</td></tr>
           <tr><td>Live web / X search</td><td>Grok (xAI tools)</td><td>Macro report enrichment</td><td>1 Grok call</td></tr>
           <tr><td>S&amp;P 500 ticker list</td><td>GitHub CSV / Wikipedia fallback</td><td>Universe for scoring</td><td>1 HTTP fetch</td></tr>
+          <tr><td>Market caps (sort / compliance filter)</td><td>Yahoo Finance via <code>yfinance</code></td><td>Universe truncation &amp; compliance floor</td><td>local lookups</td></tr>
           <tr><td>Company financials (~90 fields)</td><td>Yahoo Finance via <code>yfinance</code></td><td>Each firm prompt</td><td>1 per ticker (local)</td></tr>
           <tr><td>Per-ticker news headlines</td><td>Stock News API (filtered to 80+ outlets)</td><td>Each firm prompt</td><td>1 per ticker</td></tr>
-          <tr><td>Macro report text</td><td>Output of Step 1 Grok call</td><td>Injected into every firm prompt</td><td>—</td></tr>
-          <tr><td>Top 30 firm reports + scores</td><td>Output of firm scoring</td><td>Portfolio allocation prompt</td><td>—</td></tr>
+          <tr><td>Macro report text</td><td>Output of macro Grok call</td><td>Allocation prompt only (not firm scoring)</td><td>—</td></tr>
+          <tr><td>Allocation candidate reports + scores</td><td>Firm scoring + local selection</td><td>Portfolio allocation prompt</td><td>—</td></tr>
+          <tr><td>ETF quote type / name checks</td><td>Yahoo Finance</td><td>Compliance validation (optional)</td><td>as needed</td></tr>
         </tbody>
       </table>
       <h3>News outlet filter</h3>
@@ -202,15 +205,15 @@
       <div class="step-row">
         <span class="step">1. Macro inputs</span><span class="arrow">→</span>
         <span class="step">2. Macro report</span><span class="arrow">→</span>
-        <span class="step">3. Score S&amp;P 500</span><span class="arrow">→</span>
-        <span class="step">4. Top 30</span><span class="arrow">→</span>
+        <span class="step">3. Score firms</span><span class="arrow">→</span>
+        <span class="step">4. Candidates</span><span class="arrow">→</span>
         <span class="step">5. Portfolio</span>
       </div>
       <div class="flow">┌─────────────────────────────────────────────────────────────────────────────┐
 │ STEP 1 — Macro inputs                                                        │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│  Stock News API ──► general market news (25 articles)                        │
-│  Wikimedia API  ──► current events portal + 2025/2026 US year pages        │
+│  Stock News API ──► general market news (25 articles default)                │
+│  Wikimedia API  ──► 2026 + 2025/2026 US year pages                         │
 │       │                                                                      │
 │       └──► combined as macro_context string                                  │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -222,68 +225,102 @@
 │  Grok + web_search + x_search                                                │
 │       │                                                                      │
 │       └──► macro_report (economic timeline, rate/inflation/tariff forecasts) │
+│           (stored; applied later at allocation — not at firm scoring)        │
 └─────────────────────────────────────────────────────────────────────────────┘
-                                    │
-                    macro_report injected into every firm call
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ STEP 3 — Firm scoring (×500, concurrency=8)  <span class="exhibit">(Exhibit 1 — firm_prompt)</span>   │
+│ STEP 3 — Firm scoring (×N, concurrency=8)  <span class="exhibit">(firm_prompt)</span>               │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│  For each S&amp;P 500 ticker:                                                    │
+│  Universe: S&amp;P 500 sorted by market cap; Max Tickers keeps largest N.        │
+│  Compliance mode: also filters universe to stocks ≥ min market cap.          │
+│  For each ticker:                                                            │
 │    Yahoo Finance ──► financials text (~90 Exhibit 2B fields)                 │
-│    Stock News API ──► ticker news (15 headlines)                             │
-│    macro_report  ──► macro-economic context                                  │
+│    Stock News API ──► ticker news (15 headlines default)                     │
 │       │                                                                      │
 │       └──► Grok ──► Investment Report + Score: X (1–100)                   │
+│           Stand-alone quality only — no macro / Fed / tariff conditioning    │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ STEP 4 — Top 30 (local sort, no LLM)                                         │
+│ STEP 4 — Candidates (local, no LLM)                                          │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│  Sort all scored firms by score descending → take top 30                     │
+│  Default: top30 = top 30 by score; allocation_candidates ≈ 35 names with     │
+│           soft sector diversity (seed ~20 under sector cap 5, then fill).    │
+│  Compliance: top-N scored stocks meeting the market-cap floor (default 30).  │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ STEP 5 — Portfolio  <span class="exhibit">(Exhibit 2E — allocation_prompt)</span>                   │
+│ STEP 5 — Portfolio  <span class="exhibit">(allocation_prompt / compliance variant)</span>         │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│  Concatenate all 30 reports + scores → Grok                                  │
+│  One shared macro_report + candidate firm packets (macro outlook sections    │
+│  stripped from older reports) → Grok                                         │
 │       │                                                                      │
 │       └──► 15-asset table: weight, type, thesis, edge, risk                  │
+│  Compliance: validate holdings; one correction Grok call if needed           │
 └─────────────────────────────────────────────────────────────────────────────┘</div>
-      <h3>Checkpointing</h3>
-      <p>After each major step, state is saved to <code>runs/</code>. Interrupted runs can resume — already-scored tickers are skipped.</p>
+      <h3>Checkpointing &amp; portfolio-only</h3>
+      <ul>
+        <li>After each major step, state is saved to <code>runs/</code>. Interrupted runs can resume — already-scored tickers are skipped.</li>
+        <li><strong>Rerun Portfolio Only</strong> reuses a prior run’s firms / macro (latest with top30, or the run loaded in Results) and regenerates allocation with current settings — no firm re-scoring.</li>
+      </ul>
     </section>
 
     <section id="prompts" class="slide">
-      <h2>The Three Grok Prompts</h2>
-      <p class="subtitle">Verbatim white-paper exhibits in <code>app/prompts.py</code></p>
+      <h2>Grok Prompts</h2>
+      <p class="subtitle">White-paper exhibits and compliance variants in <code>app/prompts.py</code></p>
       <div class="grid">
         <div class="card">
           <strong>macro_prompt(context)</strong>
           <span class="exhibit">Exhibit 2D</span>
-          <span>3-month US economic timeline + forecast tables. Uses live web search.</span>
+          <span>3-month US economic timeline + forecast tables. Uses live web/X search.</span>
         </div>
         <div class="card">
-          <strong>firm_prompt(company, industry, macro, financials, news)</strong>
-          <span class="exhibit">Exhibit 1</span>
-          <span>Investment report in third person + numeric score 1–100. One call per S&amp;P 500 company.</span>
+          <strong>firm_prompt(company, industry, financials, news)</strong>
+          <span class="exhibit">Firm-native scoring</span>
+          <span>Investment report + score 1–100 from financials/news only. Explicitly excludes macro, Fed, tariffs, and regime views so ranking is not forecast-biased.</span>
         </div>
         <div class="card">
-          <strong>allocation_prompt(top_reports)</strong>
-          <span class="exhibit">Exhibit 2E</span>
-          <span>15-asset monthly portfolio. May include stocks, ETFs, bonds, TIPS — not limited to top 30.</span>
+          <strong>allocation_prompt(macro, top_reports)</strong>
+          <span class="exhibit">Exhibit 2E (adapted)</span>
+          <span>15-asset portfolio. Macro once up front; firm packets for name selection. May include stocks, ETFs, bonds, TIPS.</span>
+        </div>
+        <div class="card">
+          <strong>compliance_allocation_prompt(...)</strong>
+          <span class="exhibit">Compliance mode</span>
+          <span>Closed stock candidate list (large-cap floor) + plain long-only ETFs only. No inverse/leveraged/vol.</span>
+        </div>
+        <div class="card">
+          <strong>allocation_correction_prompt(...)</strong>
+          <span class="exhibit">Compliance repair</span>
+          <span>If validation fails, one follow-up Grok call rewrites the table to fix listed violations.</span>
         </div>
       </div>
-      <h3>Score parsing</h3>
-      <p>Grok's firm response is parsed for <code>Score: X</code> via regex. The score drives ranking; the full report text feeds the portfolio step.</p>
+      <h3>Score parsing &amp; packet cleanup</h3>
+      <ul>
+        <li>Grok’s firm response is parsed for <code>Score: X</code> via regex. The score drives ranking; report text feeds allocation.</li>
+        <li><code>strip_firm_macro_outlook()</code> removes leftover “Economic outlook” sections from older firm reports before they enter the allocation prompt.</li>
+      </ul>
+    </section>
+
+    <section id="compliance" class="slide">
+      <h2>Compliance Mode</h2>
+      <p class="subtitle">Optional employer-style constraints (Run Options on the dashboard)</p>
+      <p>When enabled, the pipeline restricts investable stocks and validates the final table in <code>app/compliance.py</code>.</p>
+      <div class="grid">
+        <div class="card"><strong>Market-cap floor</strong><span>Default $200B. Scoring universe and stock candidates must meet this Yahoo market cap.</span></div>
+        <div class="card"><strong>Stock candidates</strong><span>Top-N scored eligible stocks (default 30) are the only stocks Grok may pick. ETFs are chosen freely within plain-ETF rules.</span></div>
+        <div class="card"><strong>Plain ETFs only</strong><span>Long-only, unleveraged. Inverse, leveraged, and volatility products are rejected by name/symbol heuristics.</span></div>
+        <div class="card"><strong>Validation</strong><span>Parsed table is checked after generation; non-compliant holdings trigger one correction call. Results show a compliance banner.</span></div>
+      </div>
+      <p>Settings: <code>COMPLIANCE_MODE</code>, <code>COMPLIANCE_MIN_MARKET_CAP_USD</code>, <code>COMPLIANCE_STOCK_CANDIDATE_COUNT</code> (also editable on the Run tab).</p>
     </section>
 
     <section id="firm-example" class="slide">
       <h2>Firm Prompt Example — AMAT</h2>
-      <p class="subtitle">Full input sent to Grok and actual output from run <code>2026-07-07_184747</code></p>
+      <p class="subtitle">Sample I/O from run <code>2026-07-07_184747</code> — older shape (macro was still injected into firm prompts)</p>
       <div class="meta">
         <div><label>Ticker:</label><value>AMAT</value></div>
         <div><label>Company:</label><value>Applied Materials, Inc.</value></div>
@@ -291,7 +328,8 @@
         <div><label>Score:</label><value>52</value></div>
         <div><label>Input size:</label><value>19,796 chars</value></div>
       </div>
-      <p>The prompt template wraps injected data: macro report at the top, then Yahoo financials, then Stock News headlines. Financials and news were reconstructed from the same sources used at run time; the macro report and Grok output are from the saved run.</p>
+      <p><strong>Current behavior differs:</strong> <code>firm_prompt</code> now sends only financials + news and asks for stand-alone quality (no macro block, no “economic outlook” section). Macro is applied once in the allocation step. The exhibit below is kept as a concrete historical sample of length and tone.</p>
+      <p>The prompt template wraps injected data: (legacy) macro report at the top, then Yahoo financials, then Stock News headlines. Financials and news were reconstructed from the same sources used at run time; the macro report and Grok output are from the saved run.</p>
       <div class="toggle-bar">
         <button class="toggle" onclick="expandPre(this, 'firm-in')">Expand input</button>
         <button class="toggle" onclick="expandPre(this, 'firm-out')">Expand output</button>
@@ -525,13 +563,14 @@ Score: 52</pre>
 
     <section id="portfolio-example" class="slide">
       <h2>Portfolio Prompt Example</h2>
-      <p class="subtitle">Full allocation_prompt input and output from run <code>2026-07-07_184747</code></p>
+      <p class="subtitle">Sample I/O from run <code>2026-07-07_184747</code> — older top-30 concatenation (pre sector-diversity / shared macro header)</p>
       <div class="meta">
         <div><label>Top 30 tickers:</label><value>TJX, AEP, TECH, CAH, CFG, DVA, DAL, EME, FLEX, GILD, HWM, LLY, NOC, RTX, ROST, TTWO, TRGP, WM, ABBV, IBM, RSG, A, LNT, ALL, MO, AIG, AMT, AMP, APH, AON</value></div>
         <div><label>Input size:</label><value>54,768 chars</value></div>
         <div><label>Output size:</label><value>3,921 chars</value></div>
       </div>
-      <p>The portfolio prompt concatenates all 30 highest-scoring firm reports (with ticker, company, score headers). Grok may allocate across stocks and ETFs — it is not required to use all 30 names.</p>
+      <p><strong>Current behavior:</strong> allocation receives the full <code>macro_report</code> once, then ~35 soft sector-diversified candidate packets (or compliance top-N). Packets include ticker, company, sector, and score; leftover firm-level “Economic outlook” sections are stripped. Grok may still allocate to stocks and ETFs outside a strict use-all-candidates rule (except in compliance mode, where stocks must come from the closed list).</p>
+      <p>The exhibit below shows the older prompt that concatenated the top 30 reports without a separate macro header block.</p>
       <div class="toggle-bar">
         <button class="toggle" onclick="expandPre(this, 'port-in')">Expand input</button>
         <button class="toggle" onclick="expandPre(this, 'port-out')">Expand output</button>
@@ -893,15 +932,17 @@ However, we can also invest in most ETFs (except short, leveraged, or vol becaus
       <p class="subtitle">How results are persisted and viewed</p>
       <ul>
         <li>Each run saves to <code>runs/YYYY-MM/YYYY-MM-DD_HHMMSS/run.json</code></li>
-        <li>Contains: settings (keys redacted), macro inputs, macro report, all firm reports/scores, top30 array, portfolio text, cost</li>
-        <li>Dashboard tabs: Run (live SSE progress), Results, History, Settings</li>
+        <li>Contains: settings (keys redacted), macro inputs, macro report, firm reports/scores/market caps, <code>top30</code>, <code>allocation_candidates</code>, portfolio text, optional <code>compliance</code> block, cost; portfolio-only runs set <code>mode: "portfolio_only"</code></li>
+        <li>Dashboard tabs: Run (live SSE progress + run options), Results, History, Settings</li>
+        <li>Results: portfolio + macro + firm scores; Excel CSV export and printable PDF report; compliance banner when enabled</li>
+        <li>History: star/favorite runs (pinned in browser localStorage); load any prior run into Results</li>
         <li>API keys: xAI/OpenRouter + Stock News API in Settings or <code>.env</code></li>
       </ul>
       <h3>Typical full-run cost</h3>
-      <p>~503 firm calls + 1 macro + 1 allocation ≈ 505 Grok calls. Sample run scored 500 firms and completed in ~75 minutes.</p>
+      <p>~503 firm calls + 1 macro + 1 allocation ≈ 505 Grok calls (plus a rare compliance correction). Sample historical run scored 500 firms and completed in ~75 minutes. Portfolio-only reruns are a single allocation call (or two with correction).</p>
     </section>
 
-    <footer>Grok PM presentation · Generated from run 2026-07-07_184747 · Open <code>static/how-it-works.html</code> in a browser</footer>
+    <footer>Grok PM · How it works · Sample exhibits from run 2026-07-07_184747 · Open <code>static/how-it-works.html</code> in a browser</footer>
   </div>
   <script>
     function expandPre(btn, id) {

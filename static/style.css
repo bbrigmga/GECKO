@@ -324,6 +324,62 @@ tr:hover td { background: var(--surface2); }
   margin: 0 0 1rem;
 }
 
+.compliance-banner {
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.compliance-banner.compliant {
+  border-color: #065f46;
+  background: #052e1f;
+}
+
+.compliance-banner.non-compliant {
+  border-color: #7f1d1d;
+  background: #2a0f0f;
+}
+
+.compliance-banner .compliance-title {
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+}
+
+.compliance-banner ul {
+  margin: 0.35rem 0 0 1.1rem;
+}
+
+.compliance-fieldset {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.compliance-fieldset legend {
+  padding: 0 0.35rem;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.checkbox-label {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0.5rem !important;
+  color: var(--text) !important;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}
+
 .status-badge {
   font-size: 0.75rem;
   padding: 0.2rem 0.6rem;

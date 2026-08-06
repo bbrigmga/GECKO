@@ -9,6 +9,14 @@ from pathlib import Path
 from typing import Any, Callable
 
 from app.config import RUNS_DIR, Settings, load_settings
+from app.compliance import (
+    compliance_summary,
+    enrich_until_eligible,
+    etf_checker_from_cache,
+    filter_entries_by_market_cap,
+    parse_portfolio_table,
+    validate_portfolio,
+)
 from app.grok import GrokClient, parse_score
 from app.prompts import strip_firm_macro_outlook
 from app.sources.stocknews import StockNewsClient
@@ -153,15 +161,136 @@ def _top_reports_from_candidates(candidates: list[dict[str, Any]]) -> str:
     )
 
 
-async def _generate_portfolio(state: dict[str, Any], grok: GrokClient) -> None:
+def _settings_from_snapshot(snapshot: dict[str, Any] | None) -> Settings:
+    """Rebuild Settings from a run snapshot, falling back to live .env."""
+    live = load_settings()
+    if not snapshot:
+        return live
+    data = {**live.model_dump(), **snapshot}
+    return Settings(**data)
+
+
+def _compliance_active(settings: Settings) -> bool:
+    return bool(settings.compliance_mode)
+
+
+async def _generate_portfolio(
+    state: dict[str, Any], grok: GrokClient, settings: Settings
+) -> None:
     candidates = state.get("allocation_candidates") or state.get("top30") or []
     top_reports = _top_reports_from_candidates(candidates)
     macro_report = state.get("macro_report") or ""
+    compliance = _compliance_active(settings)
+    candidate_tickers = [str(f["ticker"]) for f in candidates if f.get("ticker")]
+
     alloc_result = await asyncio.to_thread(
-        grok.generate_allocation, macro_report, top_reports
+        grok.generate_allocation,
+        macro_report,
+        top_reports,
+        compliance_mode=compliance,
+        min_market_cap_usd=settings.compliance_min_market_cap_usd,
+        candidate_tickers=candidate_tickers if compliance else None,
     )
-    state["portfolio"] = alloc_result.text
+    portfolio_text = alloc_result.text
+
+    if compliance:
+        holdings = parse_portfolio_table(portfolio_text)
+        allowed = {t.upper() for t in candidate_tickers}
+        etf_cache: dict[str, Any] = {}
+        ok, issues = validate_portfolio(
+            holdings,
+            allowed,
+            etf_checker=etf_checker_from_cache(etf_cache),
+        )
+        if not ok:
+            correction = await asyncio.to_thread(
+                grok.generate_allocation_correction,
+                portfolio_text,
+                issues,
+                candidate_tickers=candidate_tickers,
+            )
+            portfolio_text = correction.text
+            holdings = parse_portfolio_table(portfolio_text)
+            ok, issues = validate_portfolio(
+                holdings,
+                allowed,
+                etf_checker=etf_checker_from_cache(etf_cache),
+            )
+
+        comp = dict(state.get("compliance") or {})
+        if not comp:
+            comp = compliance_summary(
+                enabled=True,
+                min_market_cap_usd=settings.compliance_min_market_cap_usd,
+                stock_candidate_count=settings.compliance_stock_candidate_count,
+            )
+        comp["candidate_tickers"] = candidate_tickers
+        comp["portfolio_status"] = "compliant" if ok else "non_compliant"
+        comp["portfolio_issues"] = issues if not ok else []
+        state["compliance"] = comp
+
+    state["portfolio"] = portfolio_text
     state["total_cost_usd"] = grok.total_cost_usd
+
+
+def _select_allocation_candidates(
+    state: dict[str, Any], settings: Settings
+) -> None:
+    """Rank firms and set top30 / allocation_candidates (compliance-aware)."""
+    ranked = sorted(
+        [f for f in state["firms"].values() if f.get("score") is not None],
+        key=lambda x: x["score"],
+        reverse=True,
+    )
+    if _compliance_active(settings):
+        min_cap = float(settings.compliance_min_market_cap_usd)
+        count = settings.compliance_stock_candidate_count
+        needed = max(count, 30)
+        eligible = enrich_until_eligible(ranked, min_cap=min_cap, needed=needed)
+        for firm in eligible:
+            ticker = firm.get("ticker")
+            if ticker and ticker in state["firms"]:
+                state["firms"][ticker]["market_cap"] = firm.get("market_cap")
+        state["allocation_candidates"] = eligible[:count]
+        state["top30"] = eligible[:30]
+        comp = dict(state.get("compliance") or {})
+        comp.update(
+            {
+                "enabled": True,
+                "min_market_cap_usd": settings.compliance_min_market_cap_usd,
+                "stock_candidate_count": count,
+                "candidate_tickers": [
+                    f["ticker"] for f in state["allocation_candidates"]
+                ],
+            }
+        )
+        if "disclaimer" not in comp:
+            comp["disclaimer"] = compliance_summary(
+                enabled=True,
+                min_market_cap_usd=settings.compliance_min_market_cap_usd,
+                stock_candidate_count=count,
+            )["disclaimer"]
+        state["compliance"] = comp
+    else:
+        state["top30"] = ranked[:30]
+        state["allocation_candidates"] = select_diversified_candidates(ranked)
+        state.pop("compliance", None)
+
+
+def _compliant_candidates_from_firms(
+    firms: list[dict[str, Any]], settings: Settings
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Build top30 + allocation candidates from firm dicts (portfolio-only reruns)."""
+    ranked = sorted(
+        [f for f in firms if f.get("score") is not None],
+        key=lambda x: x["score"],
+        reverse=True,
+    )
+    min_cap = float(settings.compliance_min_market_cap_usd)
+    count = settings.compliance_stock_candidate_count
+    needed = max(count, 30)
+    eligible = enrich_until_eligible(ranked, min_cap=min_cap, needed=needed)
+    return eligible[:30], eligible[:count]
 
 
 def find_latest_run_with_top30() -> str | None:
@@ -238,6 +367,12 @@ async def _build_scoring_universe(
     """Load tickers to score. On resume, keep the run's original scope (snapshot max_tickers)."""
     snap = state.get("settings") or {}
     max_tickers = int(snap.get("max_tickers") or 0) if resume else settings.max_tickers
+    run_settings = _settings_from_snapshot(snap) if resume else settings
+    compliance = _compliance_active(run_settings)
+    min_cap = float(run_settings.compliance_min_market_cap_usd)
+    cap_by_ticker: dict[str, float] = {
+        k: float(v) for k, v in (state.get("universe_market_caps") or {}).items()
+    }
 
     if resume and state.get("universe_tickers"):
         tickers = list(state["universe_tickers"])
@@ -253,6 +388,22 @@ async def _build_scoring_universe(
             message=f"Sorting {len(all_tickers)} tickers by market cap...",
         )
         sorted_entries = await asyncio.to_thread(sort_tickers_by_market_cap, all_tickers)
+        if compliance and min_cap > 0:
+            before = len(sorted_entries)
+            sorted_entries = filter_entries_by_market_cap(sorted_entries, min_cap)
+            state["compliance"] = compliance_summary(
+                enabled=True,
+                min_market_cap_usd=run_settings.compliance_min_market_cap_usd,
+                stock_candidate_count=run_settings.compliance_stock_candidate_count,
+                eligible_universe_count=len(sorted_entries),
+            )
+            await progress(
+                "universe",
+                message=(
+                    f"Compliance: {len(sorted_entries)} stocks >= "
+                    f"${min_cap / 1e9:.0f}B market cap (from {before})"
+                ),
+            )
         if max_tickers > 0:
             sorted_entries = sorted_entries[:max_tickers]
             await progress(
@@ -262,6 +413,10 @@ async def _build_scoring_universe(
                     f"(max_tickers={max_tickers})"
                 ),
             )
+        cap_by_ticker = {
+            e["ticker"]: float(e.get("market_cap") or 0.0) for e in sorted_entries
+        }
+        state["universe_market_caps"] = cap_by_ticker
         tickers = [e["ticker"] for e in sorted_entries]
         state["universe_tickers"] = tickers
 
@@ -272,32 +427,40 @@ async def _build_scoring_universe(
     seen: set[str] = set()
     firms = state.get("firms") or {}
     for ticker in tickers:
+        cap = cap_by_ticker.get(ticker) or float(
+            (firms.get(ticker) or {}).get("market_cap") or 0.0
+        )
         if ticker in by_ticker:
-            universe.append(by_ticker[ticker])
+            row = dict(by_ticker[ticker])
         elif ticker in firms:
             firm = firms[ticker]
-            universe.append(
-                {
-                    "ticker": ticker,
-                    "name": firm.get("company", ticker),
-                    "sector": firm.get("sector") or firm.get("industry") or "Unknown",
-                }
-            )
+            row = {
+                "ticker": ticker,
+                "name": firm.get("company", ticker),
+                "sector": firm.get("sector") or firm.get("industry") or "Unknown",
+            }
+        else:
+            continue
+        if cap > 0:
+            row["market_cap"] = str(int(cap))
+        universe.append(row)
         seen.add(ticker)
 
     if resume:
         for ticker, firm in firms.items():
             if firm.get("score") is None and ticker not in seen:
+                cap = cap_by_ticker.get(ticker) or float(firm.get("market_cap") or 0.0)
                 if ticker in by_ticker:
-                    universe.append(by_ticker[ticker])
+                    row = dict(by_ticker[ticker])
                 else:
-                    universe.append(
-                        {
-                            "ticker": ticker,
-                            "name": firm.get("company", ticker),
-                            "sector": firm.get("sector") or firm.get("industry") or "Unknown",
-                        }
-                    )
+                    row = {
+                        "ticker": ticker,
+                        "name": firm.get("company", ticker),
+                        "sector": firm.get("sector") or firm.get("industry") or "Unknown",
+                    }
+                if cap > 0:
+                    row["market_cap"] = str(int(cap))
+                universe.append(row)
                 seen.add(ticker)
 
     return universe
@@ -538,6 +701,11 @@ class PipelineRunner:
                             news,
                         )
                         score = parse_score(result.text)
+                        market_cap = float(
+                            entry.get("market_cap")
+                            or info.get("marketCap")
+                            or 0.0
+                        )
                         firm_data = {
                             "ticker": ticker,
                             "company": company,
@@ -546,6 +714,7 @@ class PipelineRunner:
                             "report": result.text,
                             "score": score,
                             "cost_usd": result.cost_usd,
+                            "market_cap": market_cap,
                         }
                     except Exception as exc:  # noqa: BLE001
                         firm_data = {
@@ -600,22 +769,22 @@ class PipelineRunner:
                     f"Samples: {' | '.join(sample_errors)}"
                 )
 
-            # Step 4 — ranked top + soft sector-diversified allocation candidates
-            await progress(
-                "top30",
-                message="Selecting top firms with soft sector diversity...",
-            )
-            ranked = sorted(
-                [
-                    f
-                    for f in state["firms"].values()
-                    if f.get("score") is not None
-                ],
-                key=lambda x: x["score"],
-                reverse=True,
-            )
-            state["top30"] = ranked[:30]
-            state["allocation_candidates"] = select_diversified_candidates(ranked)
+            # Step 4 — ranked top + allocation candidates (compliance-aware)
+            run_settings = _settings_from_snapshot(state.get("settings"))
+            if _compliance_active(run_settings):
+                await progress(
+                    "top30",
+                    message=(
+                        f"Selecting top {run_settings.compliance_stock_candidate_count} "
+                        "compliant stocks by score..."
+                    ),
+                )
+            else:
+                await progress(
+                    "top30",
+                    message="Selecting top firms with soft sector diversity...",
+                )
+            _select_allocation_candidates(state, run_settings)
             _save_run(run_id, state)
 
             if not state["allocation_candidates"]:
@@ -626,7 +795,7 @@ class PipelineRunner:
                 await progress("allocation", message="Generating 15-asset portfolio...")
                 if self._cancel.is_set():
                     raise asyncio.CancelledError()
-                await _generate_portfolio(state, grok)
+                await _generate_portfolio(state, grok, run_settings)
             state["status"] = "completed"
             state["completed_at"] = _utc_now()
             _save_run(run_id, state)
@@ -664,13 +833,13 @@ class PipelineRunner:
     ) -> None:
         top30 = list(source.get("top30") or [])
         candidates = list(source.get("allocation_candidates") or [])
-        if not candidates:
+        source_firms = list((source.get("firms") or {}).values())
+        if _compliance_active(settings):
+            firm_pool = source_firms or top30 + candidates
+            top30, candidates = _compliant_candidates_from_firms(firm_pool, settings)
+        elif not candidates:
             ranked = sorted(
-                [
-                    f
-                    for f in (source.get("firms") or {}).values()
-                    if f.get("score") is not None
-                ],
+                [f for f in source_firms if f.get("score") is not None],
                 key=lambda x: x["score"],
                 reverse=True,
             )
@@ -695,6 +864,18 @@ class PipelineRunner:
             "universe_count": source.get("universe_count"),
             "firms_scored": source.get("firms_scored"),
         }
+        if _compliance_active(settings):
+            state["compliance"] = compliance_summary(
+                enabled=True,
+                min_market_cap_usd=settings.compliance_min_market_cap_usd,
+                stock_candidate_count=settings.compliance_stock_candidate_count,
+                candidate_tickers=[f["ticker"] for f in candidates],
+            )
+        if not candidates:
+            raise ValueError(
+                "No allocation candidates available"
+                + (" after compliance filtering" if _compliance_active(settings) else "")
+            )
         _save_run(run_id, state)
 
         async def progress(step: str, **extra: Any) -> None:
@@ -713,7 +894,7 @@ class PipelineRunner:
             )
             if self._cancel.is_set():
                 raise asyncio.CancelledError()
-            await _generate_portfolio(state, grok)
+            await _generate_portfolio(state, grok, settings)
             state["status"] = "completed"
             state["completed_at"] = _utc_now()
             _save_run(run_id, state)

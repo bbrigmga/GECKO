@@ -40,6 +40,54 @@
         </div>
       </div>
 
+      <div class="card">
+        <h2>Run Options</h2>
+        <form id="run-options-form" class="form">
+          <label>
+            Grok Model
+            <select id="model">
+              <option value="grok-4.3">grok-4.3</option>
+              <option value="grok-4.5">grok-4.5</option>
+            </select>
+            <span id="model-hint" class="field-hint">OpenRouter uses x-ai/ prefix automatically</span>
+          </label>
+          <label>
+            Max Tickers (0 = full S&P 500)
+            <input type="number" id="max-tickers" min="0" value="0" />
+            <span class="field-hint">Truncates to the largest market-cap names first, not alphabetical</span>
+          </label>
+          <label>
+            News articles per ticker (1–50)
+            <input type="number" id="stocknews-items-per-ticker" min="1" max="50" value="15" />
+            <span class="field-hint">1 Stock News API call per ticker; article count does not add calls</span>
+          </label>
+          <label>
+            Macro market news articles (1–50)
+            <input type="number" id="stocknews-macro-items" min="1" max="50" value="25" />
+            <span class="field-hint">1 API call at the start of each run</span>
+          </label>
+          <fieldset class="compliance-fieldset">
+            <legend>Compliance mode</legend>
+            <label class="checkbox-label">
+              <input type="checkbox" id="compliance-mode" />
+              Restrict portfolio to large-cap stocks + plain ETFs
+            </label>
+            <label>
+              Minimum market cap (USD)
+              <input type="number" id="compliance-min-cap" min="0" step="1000000000" value="200000000000" />
+              <span class="field-hint">Default $200B — uses latest Yahoo Finance market cap</span>
+            </label>
+            <label>
+              Stock candidates for allocation
+              <input type="number" id="compliance-candidate-count" min="1" max="100" value="30" />
+              <span class="field-hint">Top-N scored eligible stocks sent to Grok (ETFs chosen separately)</span>
+            </label>
+          </fieldset>
+          <button type="submit" class="btn btn-primary">Save Settings</button>
+          <p id="settings-saved-summary" class="field-hint"></p>
+        </form>
+      </div>
+
       <div class="card" id="progress-card" hidden>
         <h3>Progress</h3>
         <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
@@ -60,6 +108,7 @@
       </div>
       <div id="results-content" hidden>
         <p id="results-run-label" class="results-run-label" hidden></p>
+        <div id="compliance-banner" class="compliance-banner" hidden></div>
         <div class="card">
           <div class="card-header">
             <h2>15-Asset Portfolio</h2>
@@ -111,7 +160,7 @@
     <!-- SETTINGS -->
     <section id="tab-settings" class="panel">
       <div class="card">
-        <h2>API Keys &amp; Options</h2>
+        <h2>API Keys &amp; Concurrency</h2>
         <form id="settings-form" class="form">
           <label>
             API Provider
@@ -129,34 +178,10 @@
             <input type="password" id="stocknews-key" placeholder="Leave blank to keep existing" autocomplete="off" />
           </label>
           <label>
-            Grok Model
-            <select id="model">
-              <option value="grok-4.3">grok-4.3</option>
-              <option value="grok-4.5">grok-4.5</option>
-            </select>
-            <span id="model-hint" class="field-hint">OpenRouter uses x-ai/ prefix automatically</span>
-          </label>
-          <label>
-            Max Tickers (0 = full S&P 500)
-            <input type="number" id="max-tickers" min="0" value="0" />
-            <span class="field-hint">Truncates to the largest market-cap names first, not alphabetical</span>
-          </label>
-          <label>
             Concurrency
             <input type="number" id="concurrency" min="1" max="32" value="8" />
           </label>
-          <label>
-            News articles per ticker (1–50)
-            <input type="number" id="stocknews-items-per-ticker" min="1" max="50" value="15" />
-            <span class="field-hint">1 Stock News API call per ticker; article count does not add calls</span>
-          </label>
-          <label>
-            Macro market news articles (1–50)
-            <input type="number" id="stocknews-macro-items" min="1" max="50" value="25" />
-            <span class="field-hint">1 API call at the start of each run</span>
-          </label>
           <button type="submit" class="btn btn-primary">Save Settings</button>
-          <p id="settings-saved-summary" class="field-hint"></p>
           <p id="settings-status" class="hint"></p>
         </form>
       </div>
@@ -171,6 +196,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=pdf3"></script>
+  <script src="/static/app.js?v=runopts1"></script>
 </body>
 </html>

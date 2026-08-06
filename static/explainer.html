@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Grok PM — A Plain-English Walkthrough</title>
+<link rel="icon" href="favicon.ico?v=2" type="image/x-icon" sizes="any" />
+<style>
+  :root{
+    --bg:#0b1020; --surface:#111a33; --surface2:#172244;
+    --text:#e6ecf7; --muted:#9aa9c4; --accent:#6366f1; --accent2:#22d3ee;
+    --green:#34d399; --amber:#fbbf24; --rose:#fb7185; --border:#243056;
+    --code-bg:#0a0f1f;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    font-family:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+    background:radial-gradient(1200px 800px at 80% -10%,#1b2550 0%,transparent 60%),
+               radial-gradient(900px 700px at -10% 20%,#10203a 0%,transparent 55%),
+               var(--bg);
+    color:var(--text); line-height:1.65;
+  }
+  .deck{max-width:1180px;margin:0 auto;padding:2.5rem 1.5rem 6rem}
+  section{padding:2.5rem 0; border-bottom:1px solid var(--border)}
+  section:last-of-type{border-bottom:none}
+  h1{font-size:clamp(2.2rem,5vw,3.4rem);font-weight:800;letter-spacing:-0.02em;line-height:1.1}
+  h2{font-size:clamp(1.6rem,3vw,2.2rem);font-weight:700;margin-bottom:.4rem;letter-spacing:-0.01em}
+  h3{font-size:1.15rem;color:#cdd9f0;margin:1.2rem 0 .5rem}
+  p{color:#cdd9f0}
+  .lead{font-size:1.15rem;color:var(--muted);max-width:760px}
+  .muted{color:var(--muted)}
+  .accent{color:var(--accent2)}
+  .green{color:var(--green)} .amber{color:var(--amber)} .rose{color:var(--rose)}
+  code{background:var(--code-bg);border:1px solid var(--border);padding:.1rem .4rem;border-radius:5px;font-family:ui-monospace,Consolas,monospace;font-size:.85em;color:var(--accent2)}
+  a{color:var(--accent2);text-decoration:none} a:hover{text-decoration:underline}
+
+  .hero{padding:3.5rem 0 2rem;border-bottom:1px solid var(--border)}
+  .hero-brand{display:flex;align-items:center;gap:1.25rem;margin-bottom:1.25rem}
+  .hero-logo{border-radius:18px;border:1px solid var(--border);background:#0e1733;flex:0 0 auto;width:84px;height:84px}
+  .hero-brand .pill{margin-bottom:0}
+  @media(max-width:560px){.hero-brand{flex-direction:column;align-items:flex-start;gap:.75rem}.hero-logo{width:64px;height:64px}}
+  .pill{display:inline-block;background:linear-gradient(90deg,#1e2a55,#24366d);color:var(--accent2);padding:.35rem .85rem;border-radius:999px;font-size:.8rem;letter-spacing:.04em;text-transform:uppercase;margin-bottom:1rem;border:1px solid var(--border)}
+  .hero-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:2rem;align-items:center;margin-top:1.5rem}
+  @media(max-width:860px){.hero-grid{grid-template-columns:1fr}}
+  .hero-stats{display:grid;grid-template-columns:repeat(2,1fr);gap:.75rem}
+  .stat{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:1rem 1.1rem}
+  .stat .num{font-size:1.8rem;font-weight:800;color:#fff;line-height:1}
+  .stat .lbl{color:var(--muted);font-size:.85rem;margin-top:.25rem}
+
+  nav.toc{display:flex;flex-wrap:wrap;gap:.5rem;margin:1.5rem 0 0}
+  nav.toc a{color:var(--accent2);border:1px solid var(--border);background:var(--surface);padding:.4rem .9rem;border-radius:8px;font-size:.9rem}
+  nav.toc a:hover{background:var(--surface2);text-decoration:none}
+
+  .grid{display:grid;gap:1rem;margin:1.25rem 0}
+  .g2{grid-template-columns:repeat(2,1fr)}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  .g4{grid-template-columns:repeat(4,1fr)}
+  @media(max-width:860px){.g2,.g3,.g4{grid-template-columns:1fr}}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:1.2rem 1.25rem}
+  .card h3{margin-top:0}
+  .card .big{font-size:2rem;font-weight:800;color:#fff;line-height:1}
+  .card .sub{color:var(--muted);font-size:.9rem;margin-top:.3rem}
+  .card.accent{border-color:var(--accent)} .card.green{border-color:var(--green)}
+  .card.amber{border-color:var(--amber)} .card.rose{border-color:var(--rose)}
+
+  .steps{display:grid;grid-template-columns:repeat(5,1fr);gap:.6rem;margin:1.5rem 0}
+  @media(max-width:980px){.steps{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:560px){.steps{grid-template-columns:1fr}}
+  .step{background:linear-gradient(180deg,#16224a,#101a3a);border:1px solid var(--border);border-radius:12px;padding:1rem;position:relative;overflow:hidden}
+  .step .n{position:absolute;top:.5rem;right:.75rem;font-size:2.4rem;font-weight:800;color:#1c2a55;letter-spacing:-.04em}
+  .step .t{font-weight:700;color:#fff;font-size:1rem}
+  .step .d{color:var(--muted);font-size:.82rem;margin-top:.25rem}
+
+  .flow{background:var(--code-bg);border:1px solid var(--border);border-radius:14px;padding:1.5rem;overflow-x:auto;font-family:ui-monospace,Consolas,monospace;font-size:.8rem;line-height:1.55;color:#9fb2d6;white-space:pre}
+  .flow .hl{color:var(--accent2)} .flow .ok{color:var(--green)} .flow .warn{color:var(--amber)}
+
+  .bignum{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin:1.5rem 0}
+  @media(max-width:860px){.bignum{grid-template-columns:repeat(2,1fr)}}
+  .bignum .b{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:1.4rem;text-align:center}
+  .bignum .b .v{font-size:2.6rem;font-weight:800;color:#fff;line-height:1}
+  .bignum .b .l{color:var(--muted);font-size:.85rem;margin-top:.4rem}
+
+  .bar{height:14px;background:#0a1226;border:1px solid var(--border);border-radius:999px;overflow:hidden;margin:.4rem 0 1rem}
+  .bar > i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:999px;transition:width 1.6s cubic-bezier(.2,.7,.2,1)}
+  .bar.green > i{background:linear-gradient(90deg,#0e7a4f,var(--green))}
+  .bar.amber > i{background:linear-gradient(90deg,#a96a13,var(--amber))}
+  .bar.rose > i{background:linear-gradient(90deg,#9d2a44,var(--rose))}
+
+  .analogy{background:linear-gradient(135deg,#15224d,#0e1733);border:1px solid var(--accent);border-radius:16px;padding:1.6rem;margin:1.25rem 0}
+  .analogy .tag{display:inline-block;color:#0b1020;background:var(--accent2);font-weight:700;font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;padding:.2rem .6rem;border-radius:999px;margin-bottom:.6rem}
+
+  table{width:100%;border-collapse:collapse;margin:1rem 0;font-size:.92rem}
+  th,td{border:1px solid var(--border);padding:.6rem .75rem;text-align:left}
+  th{background:var(--surface2);color:#fff} td{color:#cdd9f0}
+  tr:nth-child(even) td{background:#0e1733}
+
+  dl.gloss{display:grid;grid-template-columns:220px 1fr;gap:.6rem 1rem;margin:1rem 0}
+  @media(max-width:720px){dl.gloss{grid-template-columns:1fr}}
+  dl.gloss dt{color:#fff;font-weight:600} dl.gloss dd{color:var(--muted)}
+
+  .callout{border-left:4px solid var(--accent2);background:#0e1830;padding:1rem 1.2rem;border-radius:0 12px 12px 0;margin:1.2rem 0}
+  .callout.warn{border-left-color:var(--amber)} .callout.bad{border-left-color:var(--rose)}
+
+  .port-preview{border:1px solid var(--border);border-radius:14px;overflow:hidden;margin:1.25rem 0}
+  .port-preview table{margin:0;border:none}
+  .port-preview th{background:#172244}
+  .port-preview td,.port-preview th{border:none;border-bottom:1px solid var(--border)}
+  .port-preview tr:last-child td{border-bottom:none}
+  .wbar{display:inline-block;height:8px;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:999px;vertical-align:middle;margin-right:.4rem}
+
+  footer{text-align:center;color:var(--muted);font-size:.85rem;padding:2.5rem 0 0;border-top:1px solid var(--border);margin-top:2rem}
+
+  @media print{ body{background:#fff;color:#000} .bar > i{transition:none} section{break-inside:avoid} }
+</style>
+<link rel="stylesheet" href="explainer-slides.css" />
+</head>
+<body>
+<div class="deck">
+
+  <!-- ===================== HERO ===================== -->
+  <header class="hero">
+    <div class="hero-brand">
+      <img class="hero-logo" src="grok-logo.png" alt="Grok PM logo" width="84" height="84" />
+      <div>
+        <span class="pill">Plain-English walkthrough</span>
+        <h1>How Grok PM builds a <span class="accent">15-investment portfolio</span> from scratch</h1>
+      </div>
+    </div>
+    <p class="lead">No coding, no AI jargon required. This page walks through everything the app does in a single month &mdash; the data it gathers, the conversations it has with the AI, the time it takes, and what it costs &mdash; to produce one short portfolio table you could act on in a few minutes.</p>
+
+    <div class="hero-grid">
+      <div>
+        <div class="hero-stats">
+          <div class="stat"><div class="num" data-count="505">0</div><div class="lbl">AI conversations per full run</div></div>
+          <div class="stat"><div class="num" data-count="75" data-suffix=" min">0</div><div class="lbl">Typical wall-clock time</div></div>
+          <div class="stat"><div class="num" data-prefix="$" data-count="3" data-suffix="+">0</div><div class="lbl">Cost in AI usage</div></div>
+          <div class="stat"><div class="num" data-count="500">0</div><div class="lbl">Companies analyzed</div></div>
+        </div>
+      </div>
+      <div class="card accent">
+        <h3 style="margin-top:0">The end product</h3>
+        <p class="muted" style="margin:.5rem 0">A 15-row table, one per holding, with how much to put in each and why:</p>
+        <div class="port-preview">
+          <table>
+            <thead><tr><th>Weight</th><th>Holding</th><th>Type</th><th>Why it's here</th></tr></thead>
+            <tbody>
+              <tr><td><span class="wbar" style="width:48px"></span>8%</td><td>TJX</td><td>Stock</td><td>Off-price retail resilience</td></tr>
+              <tr><td><span class="wbar" style="width:42px"></span>7%</td><td>XLV</td><td>ETF</td><td>Defensive healthcare</td></tr>
+              <tr><td><span class="wbar" style="width:42px"></span>7%</td><td>LLY</td><td>Stock</td><td>GLP-1 momentum</td></tr>
+              <tr><td><span class="wbar" style="width:36px"></span>6%</td><td>AEP</td><td>Stock</td><td>Data-center power demand</td></tr>
+              <tr><td colspan="4" class="muted" style="text-align:center">&hellip; 11 more rows &hellip;</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="muted" style="font-size:.85rem;margin-top:.5rem">Real sample from run 2026-07-07. Weights sum to 100%.</p>
+      </div>
+    </div>
+
+    <nav class="toc">
+      <a href="#what">What is this?</a>
+      <a href="#jargon">The 3 words you need</a>
+      <a href="#steps">The 5 steps</a>
+      <a href="#data">The data flood</a>
+      <a href="#ai">The AI's job</a>
+      <a href="#cost">Time &amp; cost</a>
+      <a href="#output">What you actually get</a>
+      <a href="#glossary">Glossary</a>
+    </nav>
+  </header>
+
+  <!-- ===================== WHAT ===================== -->
+  <section id="what">
+    <h2>What is Grok PM?</h2>
+    <p class="lead">A small program you run on your own computer. Once a month you click a button, walk away, and roughly an hour later you have a researched 15-investment portfolio for the coming month &mdash; the kind of work a human analyst team might take days to produce.</p>
+    <div class="grid g3">
+      <div class="card"><h3>It is not</h3><p class="muted">A trading bot. It does not buy or sell anything, does not connect to a brokerage, and does not touch your money. It only produces research and a suggested allocation.</p></div>
+      <div class="card"><h3>It is</h3><p class="muted">An automated research assistant. It gathers public data, asks an AI (Grok, from xAI) to read and reason over that data hundreds of times, and assembles the answers into one portfolio.</p></div>
+      <div class="card"><h3>Why "monthly"</h3><p class="muted">The output is a portfolio you would hold for one month, then re-run and rebalance. Markets move fast enough that a fresh read each month beats a stale annual plan.</p></div>
+    </div>
+    <div class="callout">Think of it as <strong>one analyst, working for about an hour, who reads ~500 company dossiers and the whole macro backdrop</strong> &mdash; then writes you a one-page recommendation. The difference is that the "reading" is done by an AI model, and the app handles the legwork of gathering every dossier.</div>
+  </section>
+
+  <!-- ===================== JARGON ===================== -->
+  <section id="jargon">
+    <h2>The three words you actually need</h2>
+    <p class="lead">You do not need to know what a "token" or a "prompt" is to follow this. But three words make the rest easier:</p>
+    <div class="grid g3">
+      <div class="card accent">
+        <h3>1. API <span class="muted" style="font-weight:400">(&ldquo;ay-pee-eye&rdquo;)</span></h3>
+        <p class="muted">A door a service leaves open so programs can talk to it. The app uses three doors: one to <strong>Stock News</strong> (news headlines), one to <strong>Wikipedia</strong> (current events), and one to <strong>Grok</strong> (the AI). Each "knock" on a door is one request.</p>
+      </div>
+      <div class="card accent">
+        <h3>2. Prompt</h3>
+        <p class="muted">A written instruction handed to the AI. The app has a few reusable instruction templates. Each time it fills one in with real data and hands the finished text to Grok. Grok reads it and writes a reply.</p>
+      </div>
+      <div class="card accent">
+        <h3>3. Token</h3>
+        <p class="muted">Roughly a fragment of a word. The AI bills by the fragment &mdash; a few cents per thousand fragments. A long company dossier is a few thousand fragments; a short reply is a few hundred. The app tracks the running bill as it goes.</p>
+      </div>
+    </div>
+    <div class="analogy">
+      <span class="tag">Analogy</span>
+      <p>Imagine a chef who can only cook from a written order slip. You write <em>"here are 90 ingredients and 15 news clippings about this company &mdash; score it 1&ndash;100 and explain"</em>. The chef reads the slip, cooks up a one-page report, and sends it back. You do this 500 times with 500 different slips, then one final big slip: <em>"here are my best 35 companies and the macro outlook &mdash; build me a 15-item menu."</em> That is the whole app.</p>
+    </div>
+  </section>
+
+  <!-- ===================== STEPS ===================== -->
+  <section id="steps">
+    <h2>The five steps, end to end</h2>
+    <p class="lead">Every full run follows this exact path. Steps 1 and 2 happen once; step 3 repeats ~500 times in parallel; steps 4 and 5 happen once at the end.</p>
+
+    <div class="steps">
+      <div class="step"><span class="n">1</span><div class="t">Gather macro news</div><div class="d">Pull a week of market news + Wikipedia context</div></div>
+      <div class="step"><span class="n">2</span><div class="t">Write the macro report</div><div class="d">Grok reads the news and forecasts the next 3 months</div></div>
+      <div class="step"><span class="n">3</span><div class="t">Score every company</div><div class="d">~500 Grok calls, one per S&amp;P 500 firm</div></div>
+      <div class="step"><span class="n">4</span><div class="t">Pick the finalists</div><div class="d">Local sort &mdash; no AI &mdash; top 30 + diversified ~35</div></div>
+      <div class="step"><span class="n">5</span><div class="t">Build the portfolio</div><div class="d">One final Grok call turns finalists into 15 holdings</div></div>
+    </div>
+
+    <h3>Step 1 &mdash; Gather the macro news (seconds)</h3>
+    <div class="grid g3">
+      <div class="card"><div class="big">25</div><div class="sub">market news articles pulled from Stock News API (1 request)</div></div>
+      <div class="card"><div class="big">~3</div><div class="sub">Wikipedia pages read (2026, 2025 &amp; 2026 in the United States)</div></div>
+      <div class="card"><div class="big">0</div><div class="sub">AI calls yet &mdash; this step is pure data fetching</div></div>
+    </div>
+    <p class="muted">The app stitches these into one big "here is what is happening in the world" text block and saves it.</p>
+
+    <h3>Step 2 &mdash; Write the macro report (1 AI call, ~1&ndash;2 min)</h3>
+    <p>The app hands that text block to Grok and asks for a three-month US economic timeline plus a forecast table (interest rates, inflation, tariffs, jobs). Grok is also allowed to <strong>search the live web and X</strong> while it writes, so the report is not just a summary of the news &mdash; it can pull in fresh events.</p>
+    <div class="callout">This single report is saved and <strong>reused by every later step</strong>. It is the shared "macro backdrop" the AI keeps in mind when scoring and allocating.</div>
+
+    <h3>Step 3 &mdash; Score every S&amp;P 500 company (~500 AI calls, most of the run)</h3>
+    <p>This is the bulk of the work. For each of roughly 500 companies, the app:</p>
+    <div class="flow">For each ticker in the S&amp;P 500 (largest market-cap first):
+  <span class="hl">1.</span> Yahoo Finance  &rarr;  ~90 financial fields (price, P/E, margins, debt, cash, growth&hellip;)
+  <span class="hl">2.</span> Stock News API &rarr;  ~15 recent headlines for that company (1 request)
+  <span class="hl">3.</span> Build a single instruction slip:
+       &ldquo;Here is the financials and news for X. Score it 1&ndash;100
+        on stand-alone quality. Do NOT factor in the macro economy.&rdquo;
+  <span class="hl">4.</span> Grok reads it and writes a short report + a score
+  <span class="ok">5.</span> Save the report + score to disk (checkpoint)
+       &mdash; if the run crashes here, this company is skipped on resume.</div>
+    <div class="grid g4">
+      <div class="card"><div class="big">~500</div><div class="sub">AI calls</div></div>
+      <div class="card"><div class="big">8</div><div class="sub">at a time (concurrency)</div></div>
+      <div class="card"><div class="big">~90</div><div class="sub">financial fields per company</div></div>
+      <div class="card"><div class="big">~15</div><div class="sub">news headlines per company</div></div>
+    </div>
+    <div class="callout warn"><strong>Why no macro in the score?</strong> The app wants each score to reflect the <em>company itself</em> &mdash; its financials, valuation, momentum, news &mdash; not whether the AI thinks a recession is coming. The macro view is applied later, once, at allocation. This keeps the ranking from being biased by one forecast.</div>
+
+    <h3>Step 4 &mdash; Pick the finalists (no AI, instant)</h3>
+    <p>The app sorts all scored companies by score, highest first. From that ranked list it builds two buckets:</p>
+    <div class="grid g2">
+      <div class="card green"><h3 style="margin-top:0">Top 30</h3><p class="muted">The 30 highest-scoring firms. Saved for display in the dashboard's firm-scores table.</p></div>
+      <div class="card green"><h3 style="margin-top:0">Allocation candidates (~35)</h3><p class="muted">A slightly wider, sector-diversified set &mdash; seeded with the best names under a per-sector cap of 5, then filled in so no single industry dominates. This is what Grok actually picks stocks from.</p></div>
+    </div>
+    <p class="muted">In <strong>compliance mode</strong> (optional), this step changes: only stocks above a market-cap floor (default $200B) are eligible, and the candidate list is a closed top-N. ETFs are still allowed but must be plain long-only funds &mdash; no inverse, leveraged, or volatility products.</p>
+
+    <h3>Step 5 &mdash; Build the portfolio (1 AI call, ~1&ndash;2 min)</h3>
+    <p>The app hands Grok two things at once: the full macro report from step 2, and the candidate company packets from step 4. Grok writes the final 15-row table with weight, instrument type, thesis, edge, and risk for each holding.</p>
+    <div class="callout">In compliance mode, the generated table is then <strong>validated</strong> against the rules. If any holding breaks a rule, the app makes <em>one</em> extra AI call asking Grok to rewrite the table to fix the listed violations.</div>
+  </section>
+
+  <!-- ===================== DATA ===================== -->
+  <section id="data">
+    <h2>The data flood, by the numbers</h2>
+    <p class="lead">To make one 15-row portfolio, the app pulls in a surprising amount of raw material. Here is what a full S&amp;P 500 run ingests:</p>
+
+    <div class="bignum">
+      <div class="b"><div class="v" data-count="45000">0</div><div class="l">financial data fields<br/>(~90 &times; ~500 firms)</div></div>
+      <div class="b"><div class="v" data-count="7500">0</div><div class="l">company news headlines<br/>(~15 &times; ~500 firms)</div></div>
+      <div class="b"><div class="v" data-count="25">0</div><div class="l">macro market news articles</div></div>
+      <div class="b"><div class="v" data-count="3">0</div><div class="l">Wikipedia pages</div></div>
+    </div>
+
+    <h3>Where each piece comes from</h3>
+    <table>
+      <thead><tr><th>Source</th><th>What it gives us</th><th>How many requests</th><th>Costs money?</th></tr></thead>
+      <tbody>
+        <tr><td>Stock News API</td><td>Market news + per-company headlines</td><td>1 (macro) + ~500 (one per firm)</td><td>Yes &mdash; per request</td></tr>
+        <tr><td>Wikipedia</td><td>Current-events / year pages</td><td>~3 page reads</td><td>No (free)</td></tr>
+        <tr><td>Yahoo Finance</td><td>~90 financial fields per company + market caps</td><td>~500 local lookups</td><td>No (free, rate-limited)</td></tr>
+        <tr><td>Grok (xAI)</td><td>Macro report, firm scores, portfolio</td><td>1 + ~500 + 1 (and maybe 1 correction)</td><td>Yes &mdash; per token</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout warn"><strong>Stock News API is the other bill.</strong> It charges by the <em>request</em>, not by how many articles come back. A full run is roughly <strong>1 + 500 = 501 requests</strong>. Lowering "news articles per ticker" does <em>not</em> save Stock News quota &mdash; only "Max Tickers" (how many companies to score) does.</div>
+
+    <h3>Visualizing the pull</h3>
+    <p class="muted">Each bar below fills to show how much of the run that source represents:</p>
+
+    <p class="muted" style="margin-bottom:0">Yahoo Finance &mdash; ~500 company financials</p>
+    <div class="bar"><i data-pct="100"></i></div>
+    <p class="muted" style="margin-bottom:0">Stock News API &mdash; ~501 requests (1 macro + 500 firms)</p>
+    <div class="bar amber"><i data-pct="100"></i></div>
+    <p class="muted" style="margin-bottom:0">Grok AI &mdash; ~502 conversations (1 macro + 500 firms + 1 portfolio)</p>
+    <div class="bar rose"><i data-pct="100"></i></div>
+    <p class="muted" style="margin-bottom:0">Wikipedia &mdash; 3 pages (tiny by comparison)</p>
+    <div class="bar green"><i data-pct="2"></i></div>
+  </section>
+
+  <!-- ===================== AI ===================== -->
+  <section id="ai">
+    <h2>What the AI actually does</h2>
+    <p class="lead">Grok is asked three different kinds of question in one run. Each has its own instruction template:</p>
+
+    <div class="grid g3">
+      <div class="card accent">
+        <h3 style="margin-top:0">The macro question</h3>
+        <p class="muted">Asked <strong>once</strong>. "Here is a week of news and Wikipedia context &mdash; plus you may search the web &mdash; forecast the next 3 months of US economics."</p>
+        <p class="muted" style="margin-top:.5rem"><span class="accent">Output:</span> a multi-section report + a forecast table.</p>
+      </div>
+      <div class="card accent">
+        <h3 style="margin-top:0">The firm question</h3>
+        <p class="muted">Asked <strong>~500 times</strong>, once per company. "Here are 90 financial fields and 15 headlines for X &mdash; score it 1&ndash;100 on stand-alone quality. Ignore the macro."</p>
+        <p class="muted" style="margin-top:.5rem"><span class="accent">Output:</span> a short report + a number.</p>
+      </div>
+      <div class="card accent">
+        <h3 style="margin-top:0">The portfolio question</h3>
+        <p class="muted">Asked <strong>once</strong> at the end. "Here is the macro report and my best ~35 firms &mdash; build a 15-asset portfolio to beat the S&amp;P 500 for the next month."</p>
+        <p class="muted" style="margin-top:.5rem"><span class="accent">Output:</span> the 15-row table.</p>
+      </div>
+    </div>
+
+    <h3>One firm reply, verbatim (shortened)</h3>
+    <div class="flow">Investment Report:
+Recent news highlights intense pressure on semiconductor equipment stocks&hellip;
+Financials reflect trailing revenue at $29.02B, profit margins near 29.3%&hellip;
+Valuations show a trailing P/E of 51.59 and forward of 33.34&hellip;
+Economic outlook affecting the firm centers on July CPI and FOMC&hellip;
+<span class="ok">Score: 52</span></div>
+    <p class="muted">The app reads that last line with a simple pattern match. The number drives the ranking; the text is saved and reused at allocation.</p>
+  </section>
+
+  <!-- ===================== COST ===================== -->
+  <section id="cost">
+    <h2>Time &amp; cost &mdash; what a run actually takes</h2>
+    <p class="lead">A full S&amp;P 500 run is a noticeable but not extravagant job. Here is the typical envelope from real runs:</p>
+
+    <div class="bignum">
+      <div class="b"><div class="v">20&ndash;40</div><div class="l">minutes of wall-clock time<br/>(older sample: ~75 min)</div></div>
+      <div class="b"><div class="v" data-prefix="$" data-count="3" data-suffix="+">$0</div><div class="l">AI cost (xAI usage)</div></div>
+      <div class="b"><div class="v">~505</div><div class="l">Grok conversations</div></div>
+      <div class="b"><div class="v">~501</div><div class="l">Stock News API requests</div></div>
+    </div>
+
+    <h3>Where the time goes</h3>
+    <p class="muted" style="margin-bottom:0">Step 3 (firm scoring) dominates &mdash; ~500 calls, 8 at a time:</p>
+    <div class="bar"><i data-pct="90"></i></div>
+    <p class="muted">Steps 1, 2, 4, and 5 combined are a small slice:</p>
+    <div class="bar green"><i data-pct="10"></i></div>
+
+    <h3>Where the money goes</h3>
+    <p class="muted" style="margin-bottom:0">Grok tokens (the ~500 firm calls are the bulk):</p>
+    <div class="bar rose"><i data-pct="95"></i></div>
+    <p class="muted" style="margin-bottom:0">Stock News API requests (billed separately, by the request):</p>
+    <div class="bar amber"><i data-pct="40"></i></div>
+
+    <div class="grid g2">
+      <div class="card amber">
+        <h3 style="margin-top:0">Dialing it down</h3>
+        <p class="muted">Set <strong>Max Tickers</strong> to, say, 50 and the run becomes ~51 Grok calls + ~51 Stock News requests &mdash; a few minutes and well under a dollar. Good for trying things out.</p>
+      </div>
+      <div class="card green">
+        <h3 style="margin-top:0">Dialing it back up</h3>
+        <p class="muted">A full 500-firm run is the real product. It is also resumable &mdash; if your laptop sleeps or the network drops, the next run skips every firm already scored and picks up where it left off.</p>
+      </div>
+    </div>
+
+    <div class="callout"><strong>Portfolio-only reruns are nearly free.</strong> Once a run has scored firms, you can regenerate just the portfolio with new settings in <em>one</em> Grok call (or two, if compliance correction is needed) &mdash; no re-scoring, no Stock News calls.</div>
+  </section>
+
+  <!-- ===================== OUTPUT ===================== -->
+  <section id="output">
+    <h2>What you actually get back</h2>
+    <p class="lead">After all that work, the deliverable is intentionally small &mdash; one table you can read in a minute:</p>
+
+    <div class="port-preview">
+      <table>
+        <thead><tr><th>Weight</th><th>Instrument</th><th>Type</th><th>Thesis</th><th>Edge</th><th>Risk</th></tr></thead>
+        <tbody>
+          <tr><td>8%</td><td>TJX</td><td>Stock</td><td>Off-price retail resilience</td><td>Earnings beats, value rotation</td><td>Consumer slowdown</td></tr>
+          <tr><td>7%</td><td>ROST</td><td>Stock</td><td>Value apparel demand</td><td>37% EPS growth</td><td>Inventory risk</td></tr>
+          <tr><td>8%</td><td>XLU</td><td>ETF</td><td>Regulated utilities + data-center load</td><td>Low-beta defensive</td><td>Rate sensitivity</td></tr>
+          <tr><td>6%</td><td>AEP</td><td>Stock</td><td>Data-center power demand</td><td>$78B capex plan</td><td>Regulatory</td></tr>
+          <tr><td>7%</td><td>LLY</td><td>Stock</td><td>GLP-1 momentum</td><td>Oral pipeline</td><td>Competition</td></tr>
+          <tr><td colspan="6" class="muted" style="text-align:center">&hellip; 10 more rows &mdash; weights sum to 100% &hellip;</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Everything is saved</h3>
+    <div class="grid g3">
+      <div class="card"><h3 style="margin-top:0">The portfolio</h3><p class="muted">The 15-row table plus Grok's construction rationale.</p></div>
+      <div class="card"><h3 style="margin-top:0">The macro report</h3><p class="muted">The full 3-month economic forecast used as the backdrop.</p></div>
+      <div class="card"><h3 style="margin-top:0">Every firm report</h3><p class="muted">All ~500 company reports with scores &mdash; browsable in the Firm Scores table.</p></div>
+    </div>
+    <p class="muted">Each run is written to <code>runs/YYYY-MM/YYYY-MM-DD_HHMMSS/run.json</code> on your machine. The dashboard can load any past run, export the portfolio to a CSV, or print a PDF report. You can also star favorite runs to pin them to the top of the history list.</p>
+
+    <div class="analogy">
+      <span class="tag">The whole thing in one breath</span>
+      <p>The app reads the world's news and an encyclopedia, writes a 3-month economic forecast, then reads ~90 financial numbers and ~15 headlines for each of ~500 companies, asks the AI to grade each one, picks the best ~35, and asks the AI one more time to fold all of that into a 15-row portfolio you can hold for a month. Roughly an hour, a few dollars, ~500 AI conversations, ~45,000 data points.</p>
+    </div>
+  </section>
+
+  <!-- ===================== GLOSSARY ===================== -->
+  <section id="glossary">
+    <h2>Glossary &mdash; if you want the words</h2>
+    <dl class="gloss">
+      <dt>API</dt><dd>A door a service leaves open so programs can talk to it. "Calling an API" = knocking on that door with a request.</dd>
+      <dt>Prompt</dt><dd>The written instruction handed to an AI, with real data filled in. The app has a few reusable templates.</dd>
+      <dt>Token</dt><dd>A fragment of a word. AI models bill by the fragment &mdash; a few cents per thousand.</dd>
+      <dt>Grok</dt><dd>The AI model from xAI. The app uses it via xAI directly or via OpenRouter.</dd>
+      <dt>S&amp;P 500</dt><dd>The 500 largest US public companies by market value. The app's default universe to score.</dd>
+      <dt>Market cap</dt><dd>Total value of a company's shares. Used to sort the universe (largest first) and as the compliance floor.</dd>
+      <dt>Concurrency</dt><dd>How many AI calls happen at once. Default 8 &mdash; like 8 cashiers open at once instead of 1.</dd>
+      <dt>Checkpoint</dt><dd>A saved snapshot of progress. Lets an interrupted run resume without redoing finished work.</dd>
+      <dt>ETF</dt><dd>A fund that holds a basket of stocks or bonds and trades like one share. The portfolio can include these.</dd>
+      <dt>Compliance mode</dt><dd>Optional setting that restricts stocks to a large-cap list and ETFs to plain long-only funds.</dd>
+      <dt>SSE</dt><dd>Server-Sent Events &mdash; how the dashboard gets live progress updates as the run proceeds.</dd>
+      <dt>Rebalance</dt><dd>Adjusting the portfolio back to target weights. This app's output is meant to be held one month, then re-run.</dd>
+    </dl>
+  </section>
+
+<footer>Grok PM &middot; plain-English walkthrough &middot; open <code>static/explainer.html</code> in any browser</footer>
+</div>
+<script>
+function animateCounts(){
+  document.querySelectorAll('[data-count]').forEach(el=>{
+    const target=+el.dataset.count, pre=el.dataset.prefix||'', suf=el.dataset.suffix||'';
+    let cur=0; const step=target/60;
+    const tick=()=>{ cur+=step; if(cur>=target){el.textContent=pre+target+suf;return;} el.textContent=pre+Math.floor(cur)+suf; requestAnimationFrame(tick); };
+    tick();
+  });
+}
+function animateBars(){
+  document.querySelectorAll('.bar i[data-pct]').forEach(el=>{ el.style.width=el.dataset.pct+'%'; });
+}
+const io=new IntersectionObserver((ents)=>{
+  ents.forEach(e=>{ if(e.isIntersecting){
+    if(e.target.dataset.count) animateCounts();
+    if(e.target.classList.contains('bar')) animateBars();
+    io.unobserve(e.target);
+  }});
+},{threshold:.3});
+window.addEventListener('load',()=>{
+  document.querySelectorAll('[data-count]').forEach(el=>io.observe(el));
+  document.querySelectorAll('.bar').forEach(el=>io.observe(el));
+});
+</script>
+<script src="explainer-slides.js"></script>
+</body>
+</html>

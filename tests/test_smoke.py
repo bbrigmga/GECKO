@@ -206,6 +206,169 @@ def test_wikipedia() -> None:
     print(f"OK wikipedia ({len(text)} chars)")
 
 
+def test_compliance_helpers() -> None:
+    from app.compliance import (
+        InstrumentInfo,
+        filter_entries_by_market_cap,
+        is_eligible_plain_etf,
+        parse_portfolio_table,
+        select_compliant_stock_candidates,
+        validate_portfolio,
+    )
+
+    entries = [
+        {"ticker": "AAPL", "market_cap": "3000000000000"},
+        {"ticker": "F", "market_cap": "50000000000"},
+    ]
+    filtered = filter_entries_by_market_cap(entries, 200_000_000_000)
+    assert [e["ticker"] for e in filtered] == ["AAPL"]
+
+    ranked = [
+        {"ticker": "MSFT", "score": 95, "market_cap": 3_000_000_000_000},
+        {"ticker": "AAPL", "score": 90, "market_cap": 2_500_000_000_000},
+        {"ticker": "F", "score": 85, "market_cap": 50_000_000_000},
+    ]
+    picked = select_compliant_stock_candidates(
+        ranked, count=2, min_cap=200_000_000_000
+    )
+    assert [f["ticker"] for f in picked] == ["MSFT", "AAPL"]
+
+    ok_etf, _ = is_eligible_plain_etf(
+        InstrumentInfo("VTI", "ETF", 0, "Vanguard Total Stock Market ETF", False, "")
+    )
+    bad_etf, reason = is_eligible_plain_etf(
+        InstrumentInfo("UVXY", "ETF", 0, "ProShares Ultra VIX Short-Term Futures ETF", False, "")
+    )
+    assert ok_etf
+    assert not bad_etf
+    assert "volatility" in reason.lower() or "vix" in reason.lower()
+
+    table = (
+        "| Weight | Instrument | Type | Thesis | Edge | Risk |\n"
+        "|---|---|---|---|---|---|\n"
+        "| 10% | AAPL | Stock | thesis | edge | risk |\n"
+        "| 5% | VTI | ETF | thesis | edge | risk |\n"
+    )
+    holdings = parse_portfolio_table(table)
+    assert len(holdings) == 2
+    ok, issues = validate_portfolio(
+        holdings,
+        {"AAPL"},
+        etf_checker=lambda t: (t == "VTI", "mock"),
+    )
+    assert ok
+    assert issues == []
+
+    bad_holdings = [{"ticker": "F", "type": "Stock", "weight": "10%"}]
+    ok2, issues2 = validate_portfolio(
+        bad_holdings,
+        {"AAPL"},
+        etf_checker=lambda t: (False, "not allowed"),
+    )
+    assert not ok2
+    assert issues2
+    print("OK compliance helpers")
+
+
+def test_compliance_prompts() -> None:
+    from app.prompts import allocation_correction_prompt, compliance_allocation_prompt
+
+    prompt = compliance_allocation_prompt(
+        "macro here",
+        "reports here",
+        min_market_cap_usd=200_000_000_000,
+        candidate_tickers=["AAPL", "MSFT"],
+    )
+    assert "COMPLIANCE CONSTRAINTS" in prompt
+    assert "AAPL, MSFT" in prompt
+    assert "no minimum etf" in prompt.lower()
+    assert "macro here" in prompt
+    assert "reports here" in prompt
+
+    fix = allocation_correction_prompt(
+        "original table",
+        ["F: ineligible (below cap)"],
+        candidate_tickers=["AAPL"],
+    )
+    assert "Violations to fix" in fix
+    assert "AAPL" in fix
+    print("OK compliance prompts")
+
+
+def test_compliance_settings_api() -> None:
+    from fastapi.testclient import TestClient
+
+    from app.config import load_settings, save_settings
+    from app.main import app
+
+    original = load_settings()
+    client = TestClient(app)
+    try:
+        r = client.get("/api/settings")
+        assert r.status_code == 200
+        body = r.json()
+        assert "compliance_mode" in body
+        assert "compliance_min_market_cap_usd" in body
+        assert "compliance_stock_candidate_count" in body
+
+        r = client.post(
+            "/api/settings",
+            json={
+                "api_provider": body["api_provider"],
+                "model": body["model"],
+                "max_tickers": body["max_tickers"],
+                "concurrency": body["concurrency"],
+                "stocknews_items_per_ticker": body["stocknews_items_per_ticker"],
+                "stocknews_macro_items": body["stocknews_macro_items"],
+                "compliance_mode": True,
+                "compliance_min_market_cap_usd": 200_000_000_000,
+                "compliance_stock_candidate_count": 25,
+            },
+        )
+        assert r.status_code == 200
+        saved = r.json()
+        assert saved["compliance_mode"] is True
+        assert saved["compliance_stock_candidate_count"] == 25
+    finally:
+        save_settings(original)
+    print("OK compliance settings API")
+
+
+def test_select_allocation_candidates_compliance() -> None:
+    from app.config import Settings
+    from app.pipeline import _select_allocation_candidates
+
+    state = {
+        "firms": {
+            "MSFT": {
+                "ticker": "MSFT",
+                "company": "Microsoft",
+                "sector": "Tech",
+                "score": 95,
+                "market_cap": 3_000_000_000_000,
+                "report": "r",
+            },
+            "F": {
+                "ticker": "F",
+                "company": "Ford",
+                "sector": "Auto",
+                "score": 90,
+                "market_cap": 50_000_000_000,
+                "report": "r",
+            },
+        }
+    }
+    settings = Settings(
+        compliance_mode=True,
+        compliance_min_market_cap_usd=200_000_000_000,
+        compliance_stock_candidate_count=10,
+    )
+    _select_allocation_candidates(state, settings)
+    assert [f["ticker"] for f in state["allocation_candidates"]] == ["MSFT"]
+    assert state["compliance"]["enabled"] is True
+    print("OK compliance candidate selection")
+
+
 def test_fastapi_app() -> None:
     from fastapi.testclient import TestClient
 
@@ -225,7 +388,9 @@ def test_fastapi_app() -> None:
     assert isinstance(r.json(), list)
 
     r = client.post("/api/run/portfolio")
-    assert r.status_code in (400, 409)
+    assert r.status_code in (400, 409, 200)
+    if r.status_code == 200:
+        client.post("/api/run/cancel")
     print("OK FastAPI routes")
 
 
@@ -237,6 +402,10 @@ if __name__ == "__main__":
         test_sector_diversity,
         test_score_parsing,
         test_resolve_model,
+        test_compliance_helpers,
+        test_compliance_prompts,
+        test_compliance_settings_api,
+        test_select_allocation_candidates_compliance,
         test_sp500,
         test_market_cap_sort,
         test_yfinance,

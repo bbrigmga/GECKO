@@ -37,13 +37,25 @@ function formatMaxTickers(value) {
   return `${n} largest by market cap`;
 }
 
+function formatMarketCapUsd(value) {
+  const n = Number(value);
+  if (!n) return "$0";
+  if (n >= 1e12) return `$${(n / 1e12).toFixed(1)}T`;
+  if (n >= 1e9) return `$${Math.round(n / 1e9)}B`;
+  if (n >= 1e6) return `$${Math.round(n / 1e6)}M`;
+  return `$${n.toLocaleString()}`;
+}
+
 function renderSavedSettingsSummary(data) {
   const el = document.getElementById("settings-saved-summary");
   if (!el) return;
   const provider = data.api_provider === "openrouter" ? "OpenRouter" : "xAI";
+  const compliance = data.compliance_mode
+    ? ` · compliance ${formatMarketCapUsd(data.compliance_min_market_cap_usd)} floor, top ${data.compliance_stock_candidate_count} stocks`
+    : "";
   el.textContent =
     `Saved: ${formatMaxTickers(data.max_tickers)} · concurrency ${data.concurrency} · ` +
-    `${normalizeModel(data.model)} (${provider})`;
+    `${normalizeModel(data.model)} (${provider})${compliance}`;
 }
 
 async function loadSettings() {
@@ -57,6 +69,11 @@ async function loadSettings() {
     data.stocknews_items_per_ticker ?? 15;
   document.getElementById("stocknews-macro-items").value =
     data.stocknews_macro_items ?? 25;
+  document.getElementById("compliance-mode").checked = !!data.compliance_mode;
+  document.getElementById("compliance-min-cap").value =
+    data.compliance_min_market_cap_usd ?? 200000000000;
+  document.getElementById("compliance-candidate-count").value =
+    data.compliance_stock_candidate_count ?? 30;
   updateProviderUI();
   renderSavedSettingsSummary(data);
   const hints = [];
@@ -69,6 +86,15 @@ async function loadSettings() {
 
 document.getElementById("settings-form").addEventListener("submit", async (e) => {
   e.preventDefault();
+  await saveSettings({ fromKeysForm: true });
+});
+
+document.getElementById("run-options-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  await saveSettings({ fromKeysForm: false });
+});
+
+async function saveSettings({ fromKeysForm }) {
   const payload = {
     api_provider: document.getElementById("api-provider").value,
     xai_api_key: document.getElementById("xai-key").value,
@@ -80,21 +106,34 @@ document.getElementById("settings-form").addEventListener("submit", async (e) =>
       parseInt(document.getElementById("stocknews-items-per-ticker").value, 10) || 15,
     stocknews_macro_items:
       parseInt(document.getElementById("stocknews-macro-items").value, 10) || 25,
+    compliance_mode: document.getElementById("compliance-mode").checked,
+    compliance_min_market_cap_usd:
+      parseInt(document.getElementById("compliance-min-cap").value, 10) || 200000000000,
+    compliance_stock_candidate_count:
+      parseInt(document.getElementById("compliance-candidate-count").value, 10) || 30,
   };
   const res = await fetch("/api/settings", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+  const statusEl = document.getElementById("settings-status");
+  const summaryEl = document.getElementById("settings-saved-summary");
   if (res.ok) {
-    document.getElementById("settings-status").textContent = "Settings saved.";
-    document.getElementById("xai-key").value = "";
-    document.getElementById("stocknews-key").value = "";
+    if (fromKeysForm) {
+      statusEl.textContent = "Settings saved.";
+      document.getElementById("xai-key").value = "";
+      document.getElementById("stocknews-key").value = "";
+    } else if (summaryEl) {
+      summaryEl.textContent = "Settings saved.";
+    }
     loadSettings();
-  } else {
-    document.getElementById("settings-status").textContent = "Failed to save settings.";
+  } else if (fromKeysForm) {
+    statusEl.textContent = "Failed to save settings.";
+  } else if (summaryEl) {
+    summaryEl.textContent = "Failed to save settings.";
   }
-});
+}
 
 // --- Run ---
 const btnRun = document.getElementById("btn-run");
@@ -652,6 +691,53 @@ function runModeLabel(state) {
   return `Portfolio only${source}${model}`;
 }
 
+function renderComplianceBanner(state) {
+  const banner = document.getElementById("compliance-banner");
+  if (!banner) return;
+  const comp = state.compliance;
+  if (!comp?.enabled) {
+    banner.hidden = true;
+    banner.innerHTML = "";
+    return;
+  }
+
+  const cap = formatMarketCapUsd(comp.min_market_cap_usd);
+  const count = comp.stock_candidate_count ?? comp.candidate_tickers?.length ?? "—";
+  const universe = comp.eligible_universe_count != null
+    ? `${comp.eligible_universe_count} stocks scored in universe`
+    : null;
+  const status = comp.portfolio_status;
+  const issues = comp.portfolio_issues || [];
+
+  let statusLine = "Compliance screening enabled.";
+  if (status === "compliant") {
+    statusLine = "Portfolio passed compliance validation.";
+    banner.className = "compliance-banner compliant";
+  } else if (status === "non_compliant") {
+    statusLine = "Portfolio may violate compliance rules — review before trading.";
+    banner.className = "compliance-banner non-compliant";
+  } else {
+    banner.className = "compliance-banner";
+  }
+
+  const parts = [
+    `<div class="compliance-title">${esc(statusLine)}</div>`,
+    `<div>${esc(cap)} minimum market cap · top ${esc(String(count))} stock candidates` +
+      (universe ? ` · ${esc(universe)}` : "") +
+      `</div>`,
+  ];
+  if (issues.length) {
+    parts.push(
+      `<ul>${issues.map((issue) => `<li>${esc(issue)}</li>`).join("")}</ul>`
+    );
+  }
+  if (comp.disclaimer) {
+    parts.push(`<div class="field-hint">${esc(comp.disclaimer)}</div>`);
+  }
+  banner.innerHTML = parts.join("\n");
+  banner.hidden = false;
+}
+
 function showResults(state) {
   currentResultsState = state;
   document.getElementById("results-empty").hidden = true;
@@ -664,6 +750,7 @@ function showResults(state) {
   } else {
     runLabel.hidden = true;
   }
+  renderComplianceBanner(state);
   document.getElementById("portfolio-output").textContent = state.portfolio || "(No portfolio generated)";
   document.getElementById("macro-output").textContent = state.macro_report || "(No macro report)";
   firmsData = state.allocation_candidates?.length

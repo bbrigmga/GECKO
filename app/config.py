@@ -32,6 +32,28 @@ class Settings(BaseModel):
         le=50,
         description="Max articles for general market news (1 API call)",
     )
+    compliance_mode: bool = Field(
+        default=False,
+        description="Restrict portfolio to large-cap stocks + plain ETFs",
+    )
+    compliance_min_market_cap_usd: int = Field(
+        default=200_000_000_000,
+        ge=0,
+        description="Minimum market cap for scored stocks when compliance_mode is on",
+    )
+    compliance_stock_candidate_count: int = Field(
+        default=30,
+        ge=1,
+        le=100,
+        description="Top-N scored eligible stocks sent to allocation in compliance mode",
+    )
+
+
+def _env_bool(values: dict[str, str | None], key: str, *, default: bool) -> bool:
+    raw = values.get(key, os.getenv(key))
+    if raw is None:
+        return default
+    return str(raw).strip().lower() in ("1", "true", "yes", "on")
 
 
 def load_settings() -> Settings:
@@ -62,6 +84,21 @@ def load_settings() -> Settings:
             )
             or 25
         ),
+        compliance_mode=_env_bool(values, "COMPLIANCE_MODE", default=False),
+        compliance_min_market_cap_usd=int(
+            values.get(
+                "COMPLIANCE_MIN_MARKET_CAP_USD",
+                os.getenv("COMPLIANCE_MIN_MARKET_CAP_USD", "200000000000"),
+            )
+            or 200_000_000_000
+        ),
+        compliance_stock_candidate_count=int(
+            values.get(
+                "COMPLIANCE_STOCK_CANDIDATE_COUNT",
+                os.getenv("COMPLIANCE_STOCK_CANDIDATE_COUNT", "30"),
+            )
+            or 30
+        ),
     )
 
 
@@ -81,3 +118,14 @@ def save_settings(settings: Settings) -> None:
         str(settings.stocknews_items_per_ticker),
     )
     set_key(str(ENV_PATH), "STOCKNEWS_MACRO_ITEMS", str(settings.stocknews_macro_items))
+    set_key(str(ENV_PATH), "COMPLIANCE_MODE", "true" if settings.compliance_mode else "false")
+    set_key(
+        str(ENV_PATH),
+        "COMPLIANCE_MIN_MARKET_CAP_USD",
+        str(settings.compliance_min_market_cap_usd),
+    )
+    set_key(
+        str(ENV_PATH),
+        "COMPLIANCE_STOCK_CANDIDATE_COUNT",
+        str(settings.compliance_stock_candidate_count),
+    )
